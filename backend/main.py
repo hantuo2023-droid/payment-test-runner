@@ -1,0 +1,34 @@
+import os
+import shutil
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, Request, Response
+from pydantic import BaseModel
+from backend.store import migrate, rows, DATA
+from backend.auth import login, require_admin, TOKENS
+
+@asynccontextmanager
+async def lifespan(app):
+    migrate()
+    yield
+
+app = FastAPI(title='Payment Test Runner', version='0.1.0', lifespan=lifespan)
+
+class Login(BaseModel):
+    password: str
+
+@app.post('/api/auth/login')
+def admin_login(body: Login, request: Request, response: Response):
+    token = login(body.password, request.client.host)
+    response.set_cookie('ptr_session', token, httponly=True, samesite='strict', secure=os.getenv('PTR_SECURE_COOKIE') == '1', max_age=28800)
+    return {'ok': True}
+
+@app.post('/api/auth/logout', dependencies=[Depends(require_admin)])
+def logout(request: Request, response: Response):
+    TOKENS.pop(request.cookies.get('ptr_session'), None)
+    response.delete_cookie('ptr_session')
+    return {'ok': True}
+
+@app.get('/api/health')
+def health():
+    rows('SELECT 1')
+    return {'version':'0.1.0','mode':'LIVE','backend':True,'database':True,'disk':shutil.disk_usage(DATA).free > 100*1024*1024}
