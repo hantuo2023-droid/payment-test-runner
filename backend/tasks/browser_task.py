@@ -39,7 +39,12 @@ async def execute_task(page, config, credentials, card, step, cancelled, save_se
         return None
     async def navigate(url):
         cancelled()
-        response = await page.goto(url,wait_until='domcontentloaded',timeout=timeout*1000)
+        try:
+            response = await page.goto(url,wait_until='domcontentloaded',timeout=timeout*1000)
+        except BrowserError as exc:
+            if any(text in str(exc).lower() for text in ('err_aborted','execution context was destroyed','interrupted by another navigation')):
+                return  # Continue bounded state detection through normal navigation.
+            raise
         if response and response.status in (403,429):
             raise Outcome('ACCESS_BLOCKED')
         if response and response.status >= 500:

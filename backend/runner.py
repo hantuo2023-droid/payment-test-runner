@@ -57,7 +57,7 @@ async def run_item(pw, run, result):
             raise Outcome('STOPPED','CANCELLED')
     def step(state,action,page=None):
         execute('UPDATE results SET step=? WHERE id=?',(state,result['id']))
-        event = {'time':now(),'run_id':run['id'],'account':result['email'],'step':state,'url':clean_url(page.url) if page else '', 'action':action}
+        event = {'time':now(),'run_id':run['id'],'account':result['email'],'step':state,'url':clean_url(page.url) if page else '', 'action':action,'result':action if state in ('COMPLETED','ERROR','CANCELLED') else '', 'error':action if state == 'ERROR' else ''}
         with (folder/'log.jsonl').open('a',encoding='utf-8') as f: f.write(json.dumps(event,ensure_ascii=False)+'\n')
     execute("UPDATE results SET status='RUNNING',started_at=? WHERE id=?",(now(),result['id']))
     if result['card_id']:
@@ -109,6 +109,7 @@ async def run_item(pw, run, result):
             watcher.cancel()
             try: await watcher
             except asyncio.CancelledError: pass
+            except Exception: pass
         evidence_error = False
         if page and not page.is_closed():
             try:
@@ -123,7 +124,8 @@ async def run_item(pw, run, result):
                 (folder/'private-trace.zip').unlink(missing_ok=True)
                 evidence_error = True
         if browser:
-            await browser.close()
+            try: await browser.close()
+            except Exception: evidence_error = True
         if evidence_error:
             step('EVIDENCE_WARNING','Some browser evidence could not be saved')
         if code in ('BAD_CREDENTIALS','LOGIN_TIMEOUT'):

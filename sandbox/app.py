@@ -19,7 +19,9 @@ async def auth(request: Request):
     data = await request.json()
     if data.get('password') != 'sandbox-pass':
         return JSONResponse({'error':'BAD_CREDENTIALS'},status_code=401)
-    response = JSONResponse({'delay':1500 if data.get('email','').startswith('delay') else 100})
+    email = data.get('email','')
+    delay = 60000 if email.startswith('login-timeout') else 1500 if email.startswith('delay') else 100
+    response = JSONResponse({'delay':delay})
     response.set_cookie('sandbox_session','synthetic-user',httponly=True,samesite='strict')
     return response
 

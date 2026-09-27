@@ -40,7 +40,7 @@ def run():
             accounts = '\n'.join(f'{name}@example.com | sandbox-pass' for name in ('bound','declined','three','invalid','delay','timeout','stop'))
             summary = import_text('accounts',accounts+'\n bound@example.com----sandbox-pass\nnotvalid')
             assert summary['valid']==7 and summary['duplicates']==1 and len(summary['errors'])==1
-            fixtures = ['4242424242424242','4000000000000002','4000000000003220','4000000000000069','4242424242424242','4000000000009995','4000000000009995']
+            fixtures = ['4242424242424242','4000000000000002','4000000000003220','4000000000000069','4242424242424242','4000000000009995','4000000000009995','4242424242424242']
             import_text('cards','\n'.join(f'{card}|{index+1}|2035|123' for index,card in enumerate(fixtures)))
             aid = {a['email'].split('@')[0]:a['id'] for a in client.get('/api/accounts').json()}
             cids = sorted(c['id'] for c in client.get('/api/cards').json())
@@ -73,14 +73,15 @@ def run():
             for fmt in ('txt','csv'):
                 export=client.get(f'/api/runs/{rid}/export?format={fmt}')
                 assert export.status_code==200 and 'BOUND' in export.text and 'sandbox-pass' not in export.text and fixtures[0] not in export.text
-            second_id=start(['stop'],cids[6:])
+            second_id=start(['stop','bound'],cids[6:])
             for _ in range(100):
                 current=client.get(f'/api/runs/{second_id}').json()
                 if current['results'][0]['step']=='WAITING_RESULT': break
                 time.sleep(.1)
             assert client.post(f'/api/runs/{second_id}/stop').status_code==200
             second=wait(second_id)
-            assert second['results'][0]['status']=='CANCELLED',second
+            assert all(r['status']=='CANCELLED' for r in second['results']),second
+            assert second['results'][1]['code']=='NOT_EXECUTED'
             assert len(client.get(f'/api/runs/{rid}').json()['results'])==6
             assert client.post('/api/runs/delete',json={'ids':[second_id],'confirmed':True}).status_code==200
             assert len(client.get('/api/accounts').json())==7
@@ -106,6 +107,10 @@ def run():
             import_text('cards','4242424242424242|9|2035|123')
             bad_id=start(['bad'],[max(c['id'] for c in client.get('/api/cards').json())])
             assert wait(bad_id)['results'][0]['code']=='BAD_CREDENTIALS'
+            import_text('accounts','login-timeout@example.com|sandbox-pass')
+            aid['login-timeout']=max(a['id'] for a in client.get('/api/accounts').json())
+            timeout_id=start(['login-timeout'],[cids[7]])
+            assert wait(timeout_id)['results'][0]['code']=='LOGIN_TIMEOUT'
             # Real connection failure must prevent START.
             network=client.post('/api/networks',json={'name':'Dead proxy','protocol':'HTTP','host':'127.0.0.1','port':9}).json()
             probe=client.post('/api/preflight',json={'task_id':1,'network_id':network['id'],'account_ids':[aid['bound']],'card_ids':[]}).json()
@@ -121,7 +126,7 @@ def run():
             assert wait(ui_id)['results'][0]['code']=='UI_VERIFIED'
             assert not any(e['step'] in ('FILLING','SUBMITTING') for e in client.get(f'/api/runs/{ui_id}/logs').json())
             execute('DELETE FROM tasks WHERE id=?',(ui_task['id'],))
-            report={'mode':'LIVE','codes':codes,'stop':'PASS','run_isolation':'PASS','exports':'PASS','delete_run':'PASS','artifacts_redacted':'PASS','session_reuse':'PASS','expired_session_relogin':'PASS','bad_credentials':'PASS','failed_network_blocks_start':'PASS','production_ui_no_binding':'PASS'}
+            report={'mode':'LIVE','codes':codes,'stop_active_and_waiting':'PASS','run_isolation':'PASS','exports':'PASS','delete_run':'PASS','artifacts_redacted':'PASS','session_reuse':'PASS','expired_session_relogin':'PASS','bad_credentials':'PASS','login_timeout':'PASS','failed_network_blocks_start':'PASS','production_ui_no_binding':'PASS'}
             Path('test-output/e2e-report.json').write_text(json.dumps(report,indent=2))
             print(json.dumps(report,indent=2))
     finally:

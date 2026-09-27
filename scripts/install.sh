@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+[[ "$(uname -s)" == Linux ]] || { echo 'Installer supports Linux only'; exit 1; }
+[[ $EUID -eq 0 ]] || { echo 'Run installer with sudo'; exit 1; }
 # Local: sudo bash scripts/install.sh
 # Published installer: curl -fsSL YOUR_RAW_INSTALLER_URL | sudo PTR_REPO_URL=YOUR_GIT_URL bash
 if [[ -f "$(dirname "${BASH_SOURCE[0]:-/dev/stdin}")/../compose.yaml" ]]; then
@@ -12,8 +14,6 @@ else
   git clone -- "$PTR_REPO_URL" "$ROOT"
 fi
 cd "$ROOT"
-[[ "$(uname -s)" == Linux ]] || { echo 'Installer supports Linux only'; exit 1; }
-[[ $EUID -eq 0 ]] || { echo 'Run installer with sudo'; exit 1; }
 if ! command -v docker >/dev/null; then
   . /etc/os-release
   [[ "$ID" == ubuntu || "$ID" == debian ]] || { echo 'Automatic Docker install supports Debian/Ubuntu only'; exit 1; }
