@@ -26,7 +26,11 @@ def parse(text, kind, existing=()):
         if line.lower().replace(' ', '') in ('email,password','number,month,year,cvc'):
             continue
         count += 1
-        parts = [p.strip() for p in (line.split('----',1) if kind == 'accounts' and '----' in line and '|' not in line else line.split('|') if '|' in line else next(csv.reader([line])))]
+        try:
+            parts = [p.strip() for p in (line.split('----',1) if kind == 'accounts' and '----' in line and '|' not in line else line.split('|') if '|' in line else next(csv.reader([line],strict=True)))]
+        except csv.Error:
+            errors.append({'line':number,'raw':'[原始内容仅保留在输入框]','reason':'CSV 引号未闭合或格式错误，无法确定字段'})
+            continue
         error = None
         if kind == 'accounts':
             safe = parts[0][:254] if EMAIL.fullmatch(parts[0]) else '[邮箱格式错误；原始内容仅保留在输入框]'

@@ -16,3 +16,9 @@ def test_csv_and_cards():
     assert summary['valid'] == 1 and summary['duplicates'] == 1 and len(summary['errors']) == 1
     assert data[0]['masked'] == '**** **** **** 4242'
     assert '1234567890123456' not in str(summary)
+
+def test_ambiguous_csv_is_not_guessed():
+    summary,data=parse('a@example.com,"unterminated','accounts')
+    assert not data and len(summary['errors'])==1
+    summary,data=parse('existing@example.com|pass','accounts',['existing@example.com'])
+    assert not data and summary['duplicates']==1
