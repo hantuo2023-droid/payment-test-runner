@@ -1,0 +1,53 @@
+name: payment-test-runner
+services:
+  backend:
+    image: ptr-backend:${PTR_TAG:-local}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    init: true
+    shm_size: 1gb
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      PTR_DATA: /data
+      PTR_SECRET: ${PTR_SECRET:?Generate PTR_SECRET before startup}
+      PTR_SANDBOX_URL: http://sandbox:8080
+      PTR_SECURE_COOKIE: ${PTR_SECURE_COOKIE:-0}
+    volumes:
+      - ${PTR_DATA_DIR:-./data}:/data
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,json; d=json.load(urllib.request.urlopen('http://localhost:8000/api/health')); assert all(d[k] for k in ('backend','database','worker','disk'))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      sandbox:
+        condition: service_healthy
+  frontend:
+    image: ptr-frontend:${PTR_TAG:-local}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    init: true
+    restart: unless-stopped
+    ports:
+      - '${PTR_BIND:-127.0.0.1}:${PTR_PORT:-3000}:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  sandbox:
+    image: ptr-backend:${PTR_TAG:-local}
+    command: [python, -m, uvicorn, sandbox.app:app, --host, 0.0.0.0, --port, '8080']
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
