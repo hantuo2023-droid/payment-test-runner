@@ -1,0 +1,22 @@
+{
+  "mode": "LIVE",
+  "codes": [
+    "BOUND",
+    "DECLINED",
+    "3DS_REQUIRED",
+    "INVALID_DATA",
+    "BOUND",
+    "UNKNOWN_RESULT"
+  ],
+  "stop_active_and_waiting": "PASS",
+  "run_isolation": "PASS",
+  "exports": "PASS",
+  "delete_run": "PASS",
+  "artifacts_redacted": "PASS",
+  "session_reuse": "PASS",
+  "expired_session_relogin": "PASS",
+  "bad_credentials": "PASS",
+  "login_timeout": "PASS",
+  "failed_network_blocks_start": "PASS",
+  "production_ui_no_binding": "PASS"
+}
