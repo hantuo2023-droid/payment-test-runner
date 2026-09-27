@@ -13,7 +13,7 @@ import zipfile
 from fastapi.testclient import TestClient
 from backend.main import app
 from backend.auth import initialize
-from backend.store import migrate, rows, execute
+from backend.store import migrate, rows, execute, unseal, seal
 
 def run():
     migrate()
@@ -87,7 +87,41 @@ def run():
             assert client.get(f'/api/runs/{second_id}').status_code==404
             # Session reuse, expiry fallback, task version isolation checked directly.
             assert rows("SELECT COUNT(*) n FROM sessions WHERE state='VALID'")[0]['n']>=6
-            report={'mode':'LIVE','codes':codes,'stop':'PASS','run_isolation':'PASS','exports':'PASS','delete_run':'PASS','artifacts_redacted':'PASS'}
+            for month,expired in [(10,False),(11,True)]:
+                if expired:
+                    session=rows('SELECT secret FROM sessions WHERE account_id=? AND task_id=1',(aid['bound'],))[0]
+                    state=unseal(session['secret'])
+                    state['cookies']=[]
+                    execute('UPDATE sessions SET secret=? WHERE account_id=? AND task_id=1',(seal(state),aid['bound']))
+                import_text('cards',f'4242424242424242|{month}|2035|123')
+                cid=max(c['id'] for c in client.get('/api/cards').json())
+                srid=start(['bound'],[cid])
+                session_run=wait(srid)
+                assert session_run['results'][0]['code']=='BOUND'
+                events=client.get(f'/api/runs/{srid}/logs').json()
+                assert any(e['step']=='AUTHENTICATING' for e in events)==expired
+            # Explicit bad credentials are classified separately from timeouts.
+            import_text('accounts','bad@example.com|wrong-password')
+            aid['bad']=max(a['id'] for a in client.get('/api/accounts').json())
+            import_text('cards','4242424242424242|9|2035|123')
+            bad_id=start(['bad'],[max(c['id'] for c in client.get('/api/cards').json())])
+            assert wait(bad_id)['results'][0]['code']=='BAD_CREDENTIALS'
+            # Real connection failure must prevent START.
+            network=client.post('/api/networks',json={'name':'Dead proxy','protocol':'HTTP','host':'127.0.0.1','port':9}).json()
+            probe=client.post('/api/preflight',json={'task_id':1,'network_id':network['id'],'account_ids':[aid['bound']],'card_ids':[]}).json()
+            assert not probe['ready'] and not probe['connected'] and not probe['proof']
+            assert client.post('/api/runs',json={'task_id':1,'network_id':network['id'],'account_ids':[aid['bound']],'card_ids':[],'proof':''}).status_code==400
+            # Production UI task on the controlled site opens the form without binding.
+            config=client.get('/api/tasks').json()[0]
+            config.update(name='Local Production UI',environment='Production',authorized=False)
+            ui_task=client.post('/api/tasks',json=config).json()
+            body={'task_id':ui_task['id'],'network_id':1,'account_ids':[aid['bound']],'card_ids':[]}
+            proof=client.post('/api/preflight',json=body).json()
+            ui_id=client.post('/api/runs',json=dict(body,proof=proof['proof'])).json()['id']
+            assert wait(ui_id)['results'][0]['code']=='UI_VERIFIED'
+            assert not any(e['step'] in ('FILLING','SUBMITTING') for e in client.get(f'/api/runs/{ui_id}/logs').json())
+            execute('DELETE FROM tasks WHERE id=?',(ui_task['id'],))
+            report={'mode':'LIVE','codes':codes,'stop':'PASS','run_isolation':'PASS','exports':'PASS','delete_run':'PASS','artifacts_redacted':'PASS','session_reuse':'PASS','expired_session_relogin':'PASS','bad_credentials':'PASS','failed_network_blocks_start':'PASS','production_ui_no_binding':'PASS'}
             Path('test-output/e2e-report.json').write_text(json.dumps(report,indent=2))
             print(json.dumps(report,indent=2))
     finally:

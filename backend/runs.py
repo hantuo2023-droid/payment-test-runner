@@ -10,12 +10,18 @@ from pydantic import BaseModel, Field
 from playwright.async_api import async_playwright
 from backend.auth import require_admin
 from backend.catalog import get_row, export_file, busy, Selection
+from backend.catalog import Task, validate_task
 from backend.store import rows, connect, execute, now, seal, DATA
 from backend.runner import ARTIFACTS, proxy_config
 from backend import runner
 
 router = APIRouter(prefix='/api',dependencies=[Depends(require_admin)])
 PROBES = {}
+
+@router.post('/tasks/test-address')
+def test_address(body: Task, network_id: int = 1):
+    validate_task(body)
+    return asyncio.run(probe_browser(body.model_dump(),get_row('networks',network_id)))
 
 class Plan(BaseModel):
     task_id: int
@@ -134,6 +140,18 @@ def export_run(run_id: int, format: str = 'csv'):
     get_row('runs',run_id)
     if format not in ('csv','txt'): raise HTTPException(400,'格式错误')
     return export_file(rows('SELECT * FROM results WHERE run_id=?',(run_id,)),['run_id','email','masked','status','code','ended_at','duration'],f'run-{run_id}',format)
+
+@router.get('/runs/{run_id}/logs')
+def live_logs(run_id: int):
+    get_row('runs',run_id)
+    events = []
+    for result in rows('SELECT id FROM results WHERE run_id=? ORDER BY id DESC LIMIT 10',(run_id,)):
+        path = ARTIFACTS/str(run_id)/str(result['id'])/'log.jsonl'
+        if path.exists():
+            for line in path.read_text(encoding='utf-8').splitlines():
+                try: events.append(json.loads(line))
+                except json.JSONDecodeError: pass
+    return sorted(events,key=lambda e:e['time'])[-200:]
 
 @router.get('/runs/{run_id}/results/{result_id}/artifacts/{name}')
 def artifact(run_id: int,result_id: int,name: str):

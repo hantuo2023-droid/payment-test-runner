@@ -60,6 +60,8 @@ async def run_item(pw, run, result):
         event = {'time':now(),'run_id':run['id'],'account':result['email'],'step':state,'url':clean_url(page.url) if page else '', 'action':action}
         with (folder/'log.jsonl').open('a',encoding='utf-8') as f: f.write(json.dumps(event,ensure_ascii=False)+'\n')
     execute("UPDATE results SET status='RUNNING',started_at=? WHERE id=?",(now(),result['id']))
+    if result['card_id']:
+        execute('UPDATE cards SET used=1 WHERE id=?',(result['card_id'],))
     try:
         cancelled()
         step('STARTING_BROWSER','Chromium started')

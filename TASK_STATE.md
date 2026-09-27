@@ -13,3 +13,5 @@ Phase 1 PASS: Alembic repeated migration, seed, encryption round-trip, password 
 Phases 2–4 backend PASS: import normalization/dedup, safe previews/exports, task origin validation; 5 tests total. Local sandbox site implemented; browser acceptance pending. Phase 1 commit: 1ceb593.
 
 Phases 5–9 LIVE acceptance PASS: real Chromium BOUND, DECLINED, 3DS_REQUIRED, INVALID_DATA, delayed redirect, UNKNOWN_RESULT; STOP, Run isolation, TXT/CSV, cascade Run deletion, screenshot and redacted trace/log. Evidence: test-output/e2e-report.json. Frontend implemented; build blocked by sandbox spawn EPERM, escalated retry pending. Next: cleanup/network tests, deployment scripts, fresh clone acceptance.
+
+Phases 10–11 PASS: 8 backend tests covering cleanup, restart interruption, CRUD/validation/security; expanded LIVE E2E also passes Session reuse, expired-session relogin, bad credentials, failed-network START gate, Production UI no-submit. Frontend UI real-browser acceptance PASS; lint clean, production build PASS. Phase 12 deployment scripts implemented; Docker runtime NOT TESTED (Docker unavailable). Next: commit and fresh clone verification.

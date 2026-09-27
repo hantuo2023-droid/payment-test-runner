@@ -84,3 +84,4 @@ def migrate():
     cfg.set_main_option('script_location', str(Path(__file__).parent / 'migrations'))
     command.upgrade(cfg, 'head')
     seed()
+    cipher()  # Validate or create the encryption key before accepting requests.

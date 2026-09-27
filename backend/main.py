@@ -3,6 +3,8 @@ import shutil
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Request, Response
 from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from backend.store import migrate, rows, DATA
 from backend.auth import login, require_admin, TOKENS
 
@@ -15,6 +17,10 @@ async def lifespan(app):
     stop_worker()
 
 app = FastAPI(title='Payment Test Runner', version='0.1.0', lifespan=lifespan)
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request, exc):
+    return JSONResponse(status_code=422,content={'detail':[{'field':'.'.join(str(x) for x in e['loc']),'reason':e['msg']} for e in exc.errors()]})
 from backend.importer import router as import_router
 app.include_router(import_router)
 from backend.catalog import router as catalog_router

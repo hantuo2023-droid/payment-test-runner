@@ -8,3 +8,6 @@ data/
 *.pyc
 test-output/
 dist/
+.pnpm-store/
+pytest-cache-files-*/
+backups/
