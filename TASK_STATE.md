@@ -9,3 +9,5 @@ Next: establish backend and migrations, then importer and task modules.
 Last stable commit: none.
 
 Phase 1 PASS: Alembic repeated migration, seed, encryption round-trip, password hashing (1 test). Next: imports. Last stable commit: see git log for phase 1.
+
+Phases 2–4 backend PASS: import normalization/dedup, safe previews/exports, task origin validation; 5 tests total. Local sandbox site implemented; browser acceptance pending. Phase 1 commit: 1ceb593.

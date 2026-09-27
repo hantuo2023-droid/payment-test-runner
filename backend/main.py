@@ -12,6 +12,10 @@ async def lifespan(app):
     yield
 
 app = FastAPI(title='Payment Test Runner', version='0.1.0', lifespan=lifespan)
+from backend.importer import router as import_router
+app.include_router(import_router)
+from backend.catalog import router as catalog_router
+app.include_router(catalog_router)
 
 class Login(BaseModel):
     password: str
