@@ -16,7 +16,7 @@ async def lifespan(app):
     yield
     stop_worker()
 
-app = FastAPI(title='Payment Test Runner', version='0.1.0', lifespan=lifespan)
+app = FastAPI(title='Payment Test Runner', version='0.2.0', lifespan=lifespan)
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, exc):
@@ -47,4 +47,4 @@ def logout(request: Request, response: Response):
 def health():
     rows('SELECT 1')
     from backend import runner
-    return {'version':'0.1.0','mode':'LIVE','backend':True,'database':True,'worker':bool(runner.THREAD and runner.THREAD.is_alive()),'disk':shutil.disk_usage(DATA).free > 100*1024*1024}
+    return {'version':'0.2.0','mode':'LIVE','backend':True,'database':True,'worker':bool(runner.THREAD and runner.THREAD.is_alive()),'disk':shutil.disk_usage(DATA).free > 100*1024*1024}

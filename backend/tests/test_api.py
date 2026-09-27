@@ -64,3 +64,24 @@ def test_cleanup_and_restart_recovery(client):
     assert rows('SELECT status FROM runs WHERE id=?',(rid,))[0]['status']=='INTERRUPTED'
     assert rows('SELECT code FROM results WHERE run_id=?',(rid,))[0]['code']=='INTERRUPTED'
     assert client.post('/api/runs/delete',json={'ids':[rid],'confirmed':True}).status_code==200
+
+
+def test_pool_selection_usage_and_network_import(client):
+    from backend.runs import Plan,chosen
+    for kind,text in [('accounts','pool@example.com|pool-secret'),('cards','4242424242424242|11|2040|123'),('networks','http://pool-user:pool-secret@localhost:18889')]:
+        preview=client.post('/api/import/preview',json={'kind':kind,'text':text}).json()
+        assert client.post('/api/import/confirm',json={'preview_id':preview['preview_id']}).status_code==200
+        items=client.get('/api/'+kind).json()
+        item=next(i for i in items if i.get('email')=='pool@example.com' or i.get('port')==18889 or kind=='cards')
+        assert item['selected']
+        if kind=='cards':execute('UPDATE cards SET used=1,use_count=2 WHERE id=?',(item['id'],))
+        assert client.post('/api/pools/'+kind+'/selection',json={'all':True,'selected':False}).status_code==200
+        assert not chosen(Plan(task_id=1))[kind]
+        assert client.post('/api/pools/'+kind+'/selection',json={'ids':[item['id']],'selected':True}).status_code==200
+        assert chosen(Plan(task_id=1))[kind]==[item['id']]
+        assert 'pool-secret' not in client.get('/api/'+kind).text
+        assert 'pool-secret' not in client.get('/api/'+kind+'/export').text
+    preview=client.post('/api/import/preview',json={'kind':'networks','text':'http://pool-user:different@localhost:18889'}).json()
+    assert preview['duplicates']==1 and preview['valid']==0
+    for kind in ('accounts','cards','networks'):
+        assert client.post('/api/'+kind+'/delete',json={'ids':chosen(Plan(task_id=1))[kind],'confirmed':True}).status_code==200

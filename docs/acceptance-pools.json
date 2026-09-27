@@ -1,0 +1,55 @@
+{
+  "data_root": "test-output/v02-live-20260928-014857",
+  "1 account + 5 test data": {
+    "RunItems": 5,
+    "Login count": 1,
+    "Fill count": 5,
+    "Submit count": 5,
+    "Results": 5,
+    "Browser launches": 1
+  },
+  "1 account + 10 test data": {
+    "RunItems": 10,
+    "Login count": 1,
+    "Fill count": 10,
+    "Submit count": 10,
+    "Results": 10,
+    "Browser launches": 1
+  },
+  "Multiple resources": {
+    "Selected Test Data": 12,
+    "RunItems": 12,
+    "Duplicate Test Data Execution": "NO",
+    "proxy_submits": [
+      6,
+      6
+    ]
+  },
+  "Custom partial selection": {
+    "Database new records": 100,
+    "Selected": 17,
+    "RunItems": 17
+  },
+  "accounts selection/import/export": "PASS",
+  "cards selection/import/export": "PASS",
+  "networks selection/import/export": "PASS",
+  "immediate → BOUND": "PASS",
+  "spinner → BOUND": "PASS",
+  "spinner → DECLINED": "PASS",
+  "spinner → 3DS_REQUIRED": "PASS",
+  "redirect → BOUND": "PASS",
+  "multiple → BOUND": "PASS",
+  "delayed → BOUND": "PASS",
+  "iframe → 3DS_REQUIRED": "PASS",
+  "spinner → UNKNOWN_RESULT": "PASS",
+  "Batch STOP": "PASS",
+  "Bad resource isolation": "PASS",
+  "Session reuse": "PASS",
+  "Default auto-selected": "PASS",
+  "Sequential final-before-next": "PASS",
+  "Blank Screenshot Regression": "PASS (saved PNG terminal pixels checked)",
+  "Final result log": "PASS",
+  "Run Isolation": "PASS",
+  "TXT / CSV Export": "PASS",
+  "Navigation Transient Regression": "PASS (real execution-context destruction)"
+}

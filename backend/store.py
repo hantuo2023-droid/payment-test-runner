@@ -75,7 +75,8 @@ def seed():
                 ('Local Sandbox Binding', '受控本地站点：真实填写、提交并解析结果', 'Sandbox',sandbox,sandbox+'/login',sandbox+'/settings/payments',1,'sandbox',1),
                 ('Preply Payment UI', '仅登录、导航和 Add Card 界面验证；不会填写或提交卡片', 'Production','https://preply.com','https://preply.com/en/login','https://preply.com/en/settings/payments',1,'preply_ui',0),
             ])
-        db.execute("INSERT OR IGNORE INTO networks(id,name,protocol) VALUES(1,'Direct','Direct')")
+        if not db.execute("SELECT 1 FROM networks WHERE protocol='Direct'").fetchone():
+            db.execute("INSERT INTO networks(name,protocol) VALUES('Direct','Direct')")
 
 def migrate():
     from alembic.config import Config

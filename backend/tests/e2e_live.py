@@ -1,8 +1,10 @@
 """Real Chromium integration acceptance. Run as a module, no browser mocks."""
 import os
+from datetime import datetime
 from pathlib import Path
-os.environ['PTR_DATA'] = str(Path('test-output/e2e-data').resolve())
+os.environ['PTR_DATA'] = str(Path('test-output/v02-core-'+datetime.now().strftime('%Y%m%d-%H%M%S')).resolve())
 os.environ['PTR_TIMEOUT'] = '5'
+os.environ['PTR_SANDBOX_URL']='http://127.0.0.1:18082'
 import asyncio
 import json
 import socket
@@ -18,11 +20,11 @@ from backend.store import migrate, rows, execute, unseal, seal
 def run():
     migrate()
     if not rows("SELECT * FROM settings WHERE key='admin_password'"): initialize('acceptance-password')
-    server = subprocess.Popen([sys.executable,'-m','uvicorn','sandbox.app:app','--host','127.0.0.1','--port','8080'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    server = subprocess.Popen([sys.executable,'-m','uvicorn','sandbox.app:app','--host','127.0.0.1','--port','18082'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     try:
         for _ in range(50):
             try:
-                with socket.create_connection(('127.0.0.1',8080),timeout=.2): break
+                with socket.create_connection(('127.0.0.1',18082),timeout=.2): break
             except OSError: time.sleep(.1)
         with TestClient(app) as client:
             client.headers['X-PTR-Client'] = 'web'
@@ -76,7 +78,7 @@ def run():
             second_id=start(['stop','bound'],cids[6:])
             for _ in range(100):
                 current=client.get(f'/api/runs/{second_id}').json()
-                if current['results'][0]['step']=='WAITING_RESULT': break
+                if current['results'][0]['step'] in ('WAITING_RESULT','PROCESSING'): break
                 time.sleep(.1)
             assert client.post(f'/api/runs/{second_id}/stop').status_code==200
             second=wait(second_id)

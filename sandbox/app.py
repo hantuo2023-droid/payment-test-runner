@@ -1,5 +1,6 @@
 """Deterministic local test site. Synthetic cards, no payments or external calls."""
 import html
+import json
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -26,10 +27,14 @@ async def auth(request: Request):
     return response
 
 @app.get('/settings/payments', response_class=HTMLResponse)
-def payments(request: Request):
+@app.get('/settings/payments/{scenario}', response_class=HTMLResponse)
+def payments(request: Request, scenario: str='immediate'):
     if request.cookies.get('sandbox_session') != 'synthetic-user':
         return STYLE+'''<main><h1>Loading…</h1></main><script>setTimeout(()=>location.href='/login?next=/settings/payments',700)</script>'''
-    return STYLE+'''<main><small>LOCAL SANDBOX · NO REAL PAYMENTS</small><h1>Payment methods</h1><p>Manage synthetic payment fixtures in this controlled environment.</p><button id="add">Add card</button><section id="form" hidden><h2>Save a payment card</h2><form><label>Card number<input name="card_number" autocomplete="off" required></label><label>Expiry month<input name="month" required></label><label>Expiry year<input name="year" required></label><label>CVC<input name="cvc" type="password" required></label><button type="submit">Submit</button></form></section><h2 id="result" role="status"></h2></main><script>document.querySelector('#add').onclick=()=>document.querySelector('#form').hidden=false;document.querySelector('form').onsubmit=async e=>{e.preventDefault();let f=Object.fromEntries(new FormData(e.target));document.querySelector('#result').textContent='Processing…';let r=await fetch('/bind',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});let d=await r.json();if(d.result==='TIMEOUT')return;e.target.reset();setTimeout(()=>{let el=document.querySelector('#result');el.dataset.result=d.result;el.textContent=d.result},300)}</script>'''
+    if scenario not in ('immediate','spinner','redirect','multiple','delayed','iframe'): return HTMLResponse('Unknown scenario',status_code=404)
+    page = STYLE+'''<main><small>LOCAL SANDBOX · NO REAL PAYMENTS</small><h1>Payment methods</h1><p>Manage synthetic payment fixtures in this controlled environment.</p><button id="add">Add card</button><section id="form" hidden><h2>Save a payment card</h2><form><label>Card number<input name="card_number" autocomplete="off" required></label><label>Expiry month<input name="month" required></label><label>Expiry year<input name="year" required></label><label>CVC<input name="cvc" type="password" required></label><button type="submit">Submit</button></form></section><h2 id="result" role="status" style="min-height:140px"></h2></main><script>document.querySelector('#add').onclick=()=>document.querySelector('#form').hidden=false;document.querySelector('form').onsubmit=async e=>{e.preventDefault();let f=Object.fromEntries(new FormData(e.target));document.querySelector('#result').textContent='Processing…';let r=await fetch('/bind',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});let d=await r.json();e.target.reset();document.querySelector('#result').dataset.processing='true';if(d.result==='TIMEOUT')return;const scenario=__SCENARIO__;if(['redirect','multiple','delayed'].includes(scenario)){setTimeout(()=>location.href='/transition/'+d.result+'/'+(scenario==='multiple'?2:1)+'/'+(scenario==='delayed'?1300:350),150);return}setTimeout(()=>{let el=document.querySelector('#result');delete el.dataset.processing;if(scenario==='iframe'&&d.result==='3DS_REQUIRED'){el.innerHTML='<iframe style="width:100%;height:460px;border:0" title="Security verification" src="/final/3DS_REQUIRED"></iframe>';return}el.dataset.result=d.result;el.textContent=d.result;el.style.background='rgb(34,170,136)';el.style.color='white'},scenario==='spinner'?1200:0)}</script>'''
+
+    return page.replace('__SCENARIO__',json.dumps(scenario))
 
 @app.post('/bind')
 async def bind(request: Request):
@@ -41,3 +46,16 @@ async def bind(request: Request):
     if not all(data.get(k) for k in ('month','year','cvc')):
         result = 'INVALID_DATA'
     return {'result':result}
+
+
+@app.get('/transition/{code}/{hops}/{delay}', response_class=HTMLResponse)
+def transition(code: str, hops: int, delay: int):
+    if code not in ('BOUND','DECLINED','INVALID_DATA','3DS_REQUIRED') or not 1<=hops<=3 or not 0<=delay<=2000:
+        return HTMLResponse('Invalid transition',status_code=400)
+    destination=f'/transition/{code}/{hops-1}/{delay}' if hops>1 else f'/final/{code}'
+    return f'<html><body><script>setTimeout(()=>location.href={json.dumps(destination)},{delay})</script></body></html>'
+
+@app.get('/final/{code}', response_class=HTMLResponse)
+def final(code: str):
+    if code not in ('BOUND','DECLINED','INVALID_DATA','3DS_REQUIRED'): return HTMLResponse('Invalid result',status_code=400)
+    return STYLE+f'<main><h1>Final result</h1><section data-result="{code}" style="background:rgb(34,170,136);color:white;min-height:140px;padding:25px"><h2>{code}</h2><p>Visible terminal evidence. Test processing has completed.</p></section></main>'

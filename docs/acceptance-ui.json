@@ -1,0 +1,10 @@
+{
+  "UI login": "PASS",
+  "UI paste / CSV / TXT import": "PASS",
+  "Default import -> automatic readiness -> START": 3,
+  "All/none/single/multiple checkboxes in three pools": "PASS",
+  "Single selection actual RunItems": 1,
+  "Multiple selection actual RunItems": 2,
+  "UI result filters / export / six menus": "PASS",
+  "page_errors": []
+}

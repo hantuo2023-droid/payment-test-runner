@@ -136,7 +136,7 @@ export default function App() {
   const [aids, setAids] = useState([]),
     [cids, setCids] = useState([]),
     [taskId, setTaskId] = useState(1),
-    [networkId, setNetworkId] = useState(1),
+    [nids, setNids] = useState([]),
     [check, setCheck] = useState(null),
     [checking, setChecking] = useState(false),
     [working, setWorking] = useState(false);
@@ -148,7 +148,10 @@ export default function App() {
     [query, setQuery] = useState(""),
     [filter, setFilter] = useState(""),
     [date, setDate] = useState("");
-  const [runId, setRunId] = useState(null),
+  const [rAccount, setRAccount] = useState(""),
+    [rNode, setRNode] = useState(""),
+    [rDate, setRDate] = useState(""),
+    [runId, setRunId] = useState(null),
     [run, setRun] = useState(null),
     [resultIds, setResultIds] = useState([]),
     [runIds, setRunIds] = useState([]),
@@ -177,9 +180,9 @@ export default function App() {
       );
       setAccounts(a);
       setCards(c);
-      setCids((selected) =>
-        selected.filter((id) => c.some((item) => item.id === id && !item.used)),
-      );
+      setAids(a.filter((x) => x.selected).map((x) => x.id));
+      setCids(c.filter((x) => x.selected).map((x) => x.id));
+      setNids(n.filter((x) => x.selected).map((x) => x.id));
       setTasks(t);
       setNetworks(n);
       setRuns(r);
@@ -252,7 +255,28 @@ export default function App() {
     setDate("");
   };
   const toggle = (id, ids, setter) => {
-    setter(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+    const kind =
+      setter === setAids
+        ? "accounts"
+        : setter === setCids
+          ? "cards"
+          : setter === setNids
+            ? "networks"
+            : null;
+    if (kind) {
+      setter(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+      act(async () => {
+        try {
+          await api("/pools/" + kind + "/selection", "POST", {
+            ids: [id],
+            selected: !ids.includes(id),
+          });
+        } finally {
+          await refresh();
+        }
+      });
+    } else
+      setter(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
     setCheck(null);
   };
   const openImport = (kind) => {
@@ -261,6 +285,9 @@ export default function App() {
     setModal({ type: "import", kind });
   };
   const openRun = async (id) => {
+    setRAccount("");
+    setRNode("");
+    setRDate("");
     setRunId(id);
     setRun(await api("/runs/" + id));
     setResultIds([]);
@@ -268,14 +295,18 @@ export default function App() {
   };
   const plan = () => ({
     task_id: taskId,
-    network_id: networkId,
+    network_ids: nids,
     account_ids: aids,
     card_ids: binding ? cids : [],
   });
   const doCheck = async () => {
     setChecking(true);
     try {
-      setCheck(await api("/preflight", "POST", plan()));
+      const checkedPlan = planKey;
+      setCheck({
+        ...(await api("/preflight", "POST", plan())),
+        planKey: checkedPlan,
+      });
     } finally {
       setChecking(false);
     }
@@ -302,6 +333,15 @@ export default function App() {
         setNotice("数据已删除");
       });
   };
+  const selectAll = (kind, selected) =>
+    act(async () => {
+      setCheck(null);
+      await api("/pools/" + kind + "/selection", "POST", {
+        all: true,
+        selected,
+      });
+      await refresh();
+    });
   const close = () => setModal(null);
   const download = (p) => {
     const a = document.createElement("a");
@@ -323,6 +363,41 @@ export default function App() {
       JSON.stringify(x).toLowerCase().includes(query.toLowerCase()),
     );
   const live = runs.find((r) => ["RUNNING", "QUEUED"].includes(r.status));
+  const planKey = JSON.stringify({
+    task_id: taskId,
+    account_ids: aids,
+    card_ids: binding ? cids : [],
+    network_ids: nids,
+  });
+  const active = !!live;
+  useEffect(() => {
+    if (!logged || active) return;
+    let cancelled = false;
+    const verify = () => {
+      setChecking(true);
+      setCheck(null);
+      api("/preflight", "POST", JSON.parse(planKey))
+        .then((result) => {
+          if (!cancelled) {
+            setCheck({ ...result, planKey });
+            api("/networks").then(setNetworks).catch(report);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) report(e);
+        })
+        .finally(() => {
+          if (!cancelled) setChecking(false);
+        });
+    };
+    const timer = setTimeout(verify, 400),
+      interval = setInterval(verify, 60000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [logged, active, planKey, currentTask?.version, report]);
   if (boot)
     return (
       <div className="login">
@@ -407,7 +482,7 @@ export default function App() {
           </div>
           <p>简单测试，清晰结果。</p>
           <div style={{ fontSize: 10 }}>
-            VERSION {health.version || "0.1.0"}
+            VERSION {health.version || "0.2.0"}
           </div>
         </div>
       </aside>
@@ -492,6 +567,19 @@ export default function App() {
                   </span>
                 ))}
               </div>
+              <div className="info-box" style={{ marginBottom: 20 }}>
+                <strong>使用说明</strong>1. 导入账号　2. 导入测试数据　3.
+                可选导入节点　4. 选择 Task　5.
+                新资源默认已选；如需排除，在对应列表取消勾选　6.
+                准备状态自动检查，点击 START　7. 自动执行到队列结束　8.
+                在运行记录查看、导出或删除。
+                <br />
+                本次预计执行：
+                <b data-testid="planned-count">
+                  {binding ? cids.length : aids.length}
+                </b>{" "}
+                条。账号和节点自动复用，无需逐条搭配。
+              </div>
               <div className="workspace-grid">
                 <div className="stack">
                   <Panel
@@ -504,7 +592,13 @@ export default function App() {
                     <div className="panel-body split">
                       <div className="numbers">
                         <div className="number-block">
-                          <label>已导入账号</label>
+                          <label>
+                            账号总数 / 可用{" "}
+                            {
+                              accounts.filter((a) => a.status === "READY")
+                                .length
+                            }
+                          </label>
                           <strong>
                             {accounts.length}
                             <span className="hint"> 个</span>
@@ -537,16 +631,18 @@ export default function App() {
                     title="测试数据"
                     number="02"
                     action={
-                      <span className="subtitle">一个账号，对应一条数据</span>
+                      <span className="subtitle">
+                        执行数量仅由所选测试数据决定
+                      </span>
                     }
                   >
                     <div className="panel-body">
                       <div className="split">
                         <div className="numbers">
                           <div className="number-block">
-                            <label>可用测试数据</label>
+                            <label>测试数据总数</label>
                             <strong>
-                              {cards.filter((c) => !c.used).length}
+                              {cards.length}
                               <span className="hint"> 条</span>
                             </strong>
                           </div>
@@ -580,7 +676,7 @@ export default function App() {
                             marginRight: 5,
                           }}
                         />
-                        仅使用合成测试数据，敏感字段始终遮罩显示。
+                        仅使用当前授权环境官方允许的测试数据，敏感字段始终遮罩。
                         {!binding && " 当前 Production UI 任务不使用卡片数据。"}
                       </p>
                     </div>
@@ -628,26 +724,40 @@ export default function App() {
                       )}
                     </div>
                   </Panel>
-                  <Panel title="网络" number="04">
+                  <Panel title="节点池" number="04">
                     <div className="panel-body">
-                      <Field
-                        label="连接方式"
-                        help="用途：为本次运行选择网络 · 必填 · Direct 或已配置代理；示例：Direct。选择后执行准备检查。"
-                      >
-                        <select
-                          value={networkId}
-                          onChange={(e) => {
-                            setNetworkId(+e.target.value);
-                            setCheck(null);
-                          }}
-                        >
-                          {networks.map((n) => (
-                            <option key={n.id} value={n.id}>
-                              {n.name} · {n.protocol}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
+                      <div className="numbers">
+                        <span>总数 {networks.length}</span>
+                        <span>
+                          Healthy{" "}
+                          {
+                            networks.filter((n) => n.status === "CONNECTED")
+                              .length
+                          }
+                        </span>
+                        <span>
+                          本次使用 {nids.length} selected /{" "}
+                          {
+                            networks.filter(
+                              (n) =>
+                                nids.includes(n.id) && n.status === "CONNECTED",
+                            ).length
+                          }{" "}
+                          healthy
+                        </span>
+                      </div>
+                      <p className="hint">
+                        账号与节点可自动复用；失败节点不参与。没有代理时默认
+                        Direct。
+                      </p>
+                      <div className="toolbar">
+                        <button onClick={() => openImport("networks")}>
+                          导入节点
+                        </button>
+                        <button onClick={() => changePage("设置")}>
+                          选择 / 管理节点
+                        </button>
+                      </div>
                     </div>
                   </Panel>
                 </div>
@@ -656,12 +766,7 @@ export default function App() {
                     <div className="panel-body">
                       {[
                         ["账号", aids.length > 0, Users],
-                        [
-                          "测试数据",
-                          !binding ||
-                            (cids.length >= aids.length && cids.length > 0),
-                          CreditCard,
-                        ],
+                        ["测试数据", !binding || cids.length > 0, CreditCard],
                         ["任务", currentTask?.enabled, Layers],
                         ["目标地址", currentTask?.target_url, Globe],
                         ["Chromium", check?.chromium, Activity],
@@ -682,10 +787,7 @@ export default function App() {
                         <span>账号 {aids.length}</span>
                         <span>数据 {binding ? cids.length : "无需"}</span>
                         <span>
-                          可执行{" "}
-                          {binding
-                            ? Math.min(aids.length, cids.length)
-                            : aids.length}
+                          预计执行 {binding ? cids.length : aids.length}
                         </span>
                       </div>
                       {check?.reasons?.length > 0 && (
@@ -696,10 +798,8 @@ export default function App() {
                         </ul>
                       )}
                       {!aids.length && <p className="hint">请先选择账号</p>}
-                      {binding && aids.length > cids.length && (
-                        <p className="hint">
-                          测试数据不足，本次最多执行 {cids.length} 条
-                        </p>
+                      {binding && !cids.length && (
+                        <p className="hint">请至少选择一条测试数据</p>
                       )}
                       <button
                         style={{ width: "100%", marginTop: 20 }}
@@ -711,7 +811,12 @@ export default function App() {
                       </button>
                       <button
                         className="primary start"
-                        disabled={!check?.ready || working || !!live}
+                        disabled={
+                          !check?.ready ||
+                          check.planKey !== planKey ||
+                          working ||
+                          !!live
+                        }
                         onClick={() =>
                           act(async () => {
                             const result = await api("/runs", "POST", {
@@ -868,6 +973,30 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                <div className="filters">
+                  <button
+                    onClick={() =>
+                      selectAll(page === "账号" ? "accounts" : "cards", true)
+                    }
+                  >
+                    全选
+                  </button>
+                  <button
+                    onClick={() =>
+                      selectAll(page === "账号" ? "accounts" : "cards", false)
+                    }
+                  >
+                    取消全选
+                  </button>
+                  <p className="hint">
+                    勾选即参加下一次 Run，无需再次标记。
+                    {page === "账号"
+                      ? "格式：email|password、email----password 或 email,password CSV。"
+                      : "当前 Adapter：" +
+                        currentTask?.adapter +
+                        "；格式 number|month|year|cvc。Local Sandbox 使用五种 fixture；其他授权环境使用官方测试数据。历史数据可以主动重新勾选。"}
+                  </p>
+                </div>
                 <DataTable
                   kind={page === "账号" ? "accounts" : "cards"}
                   data={filtered(page === "账号" ? accounts : cards).filter(
@@ -892,9 +1021,19 @@ export default function App() {
                     })
                   }
                   retest={(id) => {
-                    setAids([id]);
-                    setCheck(null);
-                    changePage("首页");
+                    act(async () => {
+                      await api("/pools/accounts/selection", "POST", {
+                        all: true,
+                        selected: false,
+                      });
+                      await api("/pools/accounts/selection", "POST", {
+                        ids: [id],
+                        selected: true,
+                      });
+                      await refresh();
+                      setCheck(null);
+                      changePage("首页");
+                    });
                   }}
                 />
               </Panel>
@@ -996,6 +1135,11 @@ export default function App() {
               </div>
               {runId && run ? (
                 <>
+                  <p className="section-note">
+                    SUCCESS = 明确成功（BOUND）；FAIL = 业务拒绝 / INVALID_DATA
+                    / 3DS_REQUIRED；ERROR = 技术异常或真正超时
+                    UNKNOWN_RESULT。3DS 不自动完成。
+                  </p>
                   <p className="section-note url">
                     目标：{run.task.target_url}
                   </p>
@@ -1052,6 +1196,20 @@ export default function App() {
                           }
                         />
                       </div>
+                      <p className="hint">
+                        剩余{" "}
+                        {
+                          run.results.filter((r) =>
+                            ["WAITING", "RUNNING"].includes(r.status),
+                          ).length
+                        }{" "}
+                        · 当前数据{" "}
+                        {run.results.find((r) => r.status === "RUNNING")
+                          ?.masked || "—"}{" "}
+                        · 节点{" "}
+                        {run.results.find((r) => r.status === "RUNNING")
+                          ?.network_name || "—"}
+                      </p>
                       <div className="progress">
                         <div
                           style={{
@@ -1159,6 +1317,62 @@ export default function App() {
                         </select>
                       </Field>
                     </div>
+                    <div className="filters">
+                      <Field
+                        label="按账号筛选"
+                        help="可选 · 只看本次运行中指定账号的结果。"
+                      >
+                        <select
+                          value={rAccount}
+                          onChange={(e) => setRAccount(e.target.value)}
+                        >
+                          <option value="">全部账号</option>
+                          {[
+                            ...new Map(
+                              run.results
+                                .filter((r) => r.account_id)
+                                .map((r) => [r.account_id, r.email]),
+                            ).entries(),
+                          ].map(([id, name]) => (
+                            <option key={id} value={id}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field
+                        label="按节点筛选"
+                        help="可选 · 只看实际使用该节点的结果。"
+                      >
+                        <select
+                          value={rNode}
+                          onChange={(e) => setRNode(e.target.value)}
+                        >
+                          <option value="">全部节点</option>
+                          {[
+                            ...new Map(
+                              run.results
+                                .filter((r) => r.network_id)
+                                .map((r) => [r.network_id, r.network_name]),
+                            ).entries(),
+                          ].map(([id, name]) => (
+                            <option key={id} value={id}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field
+                        label="执行日期"
+                        help="可选 · 按执行开始的 UTC 日期筛选。"
+                      >
+                        <input
+                          type="date"
+                          value={rDate}
+                          onChange={(e) => setRDate(e.target.value)}
+                        />
+                      </Field>
+                    </div>
                     <div className="table-wrap">
                       <table>
                         <thead>
@@ -1166,6 +1380,7 @@ export default function App() {
                             <th>选择</th>
                             <th>账号</th>
                             <th>数据</th>
+                            <th>节点</th>
                             <th>结果</th>
                             <th>原因 / 当前步骤</th>
                             <th>耗时</th>
@@ -1174,7 +1389,14 @@ export default function App() {
                         </thead>
                         <tbody>
                           {filtered(run.results)
-                            .filter((r) => !filter || r.status === filter)
+                            .filter(
+                              (r) =>
+                                (!filter || r.status === filter) &&
+                                (!rAccount ||
+                                  String(r.account_id) === rAccount) &&
+                                (!rNode || String(r.network_id) === rNode) &&
+                                (!rDate || r.started_at?.startsWith(rDate)),
+                            )
                             .map((r) => (
                               <tr key={r.id}>
                                 <td>
@@ -1189,10 +1411,15 @@ export default function App() {
                                 </td>
                                 <td>{r.email}</td>
                                 <td>{r.masked}</td>
+                                <td>{r.network_name || "—"}</td>
                                 <td>
                                   <Badge value={r.status} />
                                 </td>
-                                <td>{r.code || r.step}</td>
+                                <td>
+                                  {r.code || r.step}
+                                  <div className="hint">{r.reason}</div>
+                                  <div className="hint">{r.final_url}</div>
+                                </td>
                                 <td>{r.duration.toFixed(1)}s</td>
                                 <td>
                                   <div className="toolbar">
@@ -1395,69 +1622,96 @@ export default function App() {
                     </div>
                   </div>
                 </Panel>
-                <Panel
-                  title="网络配置"
-                  action={
-                    <button
-                      onClick={() => {
-                        setEditor({
-                          name: "",
-                          protocol: "HTTP",
-                          host: "",
-                          port: 8080,
-                          username: "",
-                          password: "",
-                        });
-                        setModal({ type: "network" });
-                      }}
+                <Panel title="节点池">
+                  <div className="panel-body">
+                    <p className="section-note">
+                      格式：http://host:port、http://username:password@host:port、socks5://host:port；CSV：name,protocol,host,port,username,password。SOCKS5
+                      不支持认证。新节点默认已选，只有 CONNECTED 节点能参与。
+                    </p>
+                    <div className="toolbar">
+                      <button onClick={() => openImport("networks")}>
+                        粘贴导入节点
+                      </button>
+                      <button onClick={() => openImport("networks")}>
+                        TXT 导入
+                      </button>
+                      <button onClick={() => openImport("networks")}>
+                        CSV 导入
+                      </button>
+                      <button onClick={() => download("/networks/export")}>
+                        导出安全字段
+                      </button>
+                      <button onClick={() => selectAll("networks", true)}>
+                        全选
+                      </button>
+                      <button onClick={() => selectAll("networks", false)}>
+                        取消全选
+                      </button>
+                      <button onClick={() => remove("networks", nids)}>
+                        删除选中
+                      </button>
+                      <button onClick={() => remove("networks", [], true)}>
+                        清空
+                      </button>
+                      <button
+                        disabled={working || !nids.length}
+                        onClick={() =>
+                          act(async () => {
+                            await api("/networks/test", "POST", plan());
+                            await refresh();
+                            setCheck(null);
+                          })
+                        }
+                      >
+                        批量 Test Connection
+                      </button>
+                    </div>
+                    <Field
+                      label="搜索节点"
+                      help="用途：按名称或 Host 筛选 · 可选 · 文本；示例：localhost。"
                     >
-                      <Plus />
-                      添加网络
-                    </button>
-                  }
-                >
+                      <input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                      />
+                    </Field>
+                  </div>
                   <div className="table-wrap">
                     <table>
                       <thead>
                         <tr>
+                          <th>参加下次 Run</th>
                           <th>名称</th>
                           <th>协议</th>
-                          <th>地址</th>
-                          <th>操作</th>
+                          <th>Host / Port</th>
+                          <th>状态</th>
+                          <th>Latency</th>
+                          <th>原因</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {networks.map((n) => (
+                        {filtered(networks).map((n) => (
                           <tr key={n.id}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                aria-label={"选择节点 " + n.name}
+                                checked={nids.includes(n.id)}
+                                onChange={() => toggle(n.id, nids, setNids)}
+                              />
+                            </td>
                             <td>{n.name}</td>
                             <td>{n.protocol}</td>
+                            <td>{n.host ? n.host + ":" + n.port : "Direct"}</td>
                             <td>
-                              {n.host
-                                ? `${n.host}:${n.port}`
-                                : "直接连接目标站点"}
+                              <Badge value={n.status} />
                             </td>
                             <td>
-                              <button
-                                disabled={working}
-                                onClick={() =>
-                                  act(async () => {
-                                    const result = await api(
-                                      "/preflight",
-                                      "POST",
-                                      { ...plan(), network_id: n.id },
-                                    );
-                                    setNotice(
-                                      result.connected
-                                        ? `Connected · Latency ${result.latency_ms} ms · ${currentTask?.target_url}`
-                                        : result.reason,
-                                    );
-                                  })
-                                }
-                              >
-                                <Globe />
-                                测试连接
-                              </button>
+                              {n.latency_ms == null
+                                ? "—"
+                                : n.latency_ms + " ms"}
                             </td>
+                            <td>{n.reason || "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1480,16 +1734,24 @@ export default function App() {
         <Modal
           error={error}
           notice={notice}
-          title={modal.kind === "accounts" ? "导入账号" : "导入测试数据"}
+          title={
+            modal.kind === "accounts"
+              ? "导入账号"
+              : modal.kind === "networks"
+                ? "导入节点"
+                : "导入测试数据"
+          }
           description="先预览格式与重复项，确认后才写入数据库。错误行的原始文本保留在本地输入框中。"
           onClose={close}
         >
           <Field
             label="粘贴文本"
             help={
-              modal.kind === "accounts"
-                ? "用途：批量导入账号 · 必填 · 每行 email|password 或 email----password；CSV 两列 email,password。示例：demo@example.com|sandbox-pass。"
-                : "用途：导入合成卡 · 必填 · 每行 number|month|year|cvc，CSV 同样四列。示例：4242424242424242|12|2035|123。支持结尾 4242 / 0002 / 3220 / 0069 / 9995 的文档测试卡。"
+              modal.kind === "networks"
+                ? "用途：批量导入节点 · 必填 · HTTP/SOCKS5 URL 或六列 CSV；示例：http://127.0.0.1:8899。SOCKS5 不支持用户名密码认证。"
+                : modal.kind === "accounts"
+                  ? "用途：批量导入账号 · 必填 · 每行 email|password 或 email----password；CSV 两列 email,password。示例：demo@example.com|sandbox-pass。"
+                  : "用途：导入合成卡 · 必填 · 每行 number|month|year|cvc，CSV 同样四列。示例：4242424242424242|12|2035|123。Local Sandbox fixture 限制只在运行适配器中检查；其他授权测试环境允许官方测试数据。"
             }
           >
             <textarea
@@ -1499,9 +1761,11 @@ export default function App() {
                 setPreview(null);
               }}
               placeholder={
-                modal.kind === "accounts"
-                  ? "demo@example.com|sandbox-pass"
-                  : "4242424242424242|12|2035|123"
+                modal.kind === "networks"
+                  ? "http://127.0.0.1:8899"
+                  : modal.kind === "accounts"
+                    ? "demo@example.com|sandbox-pass"
+                    : "4242424242424242|12|2035|123"
               }
             />
           </Field>
@@ -1598,36 +1862,18 @@ export default function App() {
           error={error}
           notice={notice}
           title={modal.kind === "accounts" ? "选择账号" : "选择测试数据"}
-          description="本次按选择顺序一对一配对。每条数据在同一个 Run 内只使用一次。"
+          description="勾选立即保存。账号是可复用资源，每条测试数据在同一 Run 只执行一次。"
           onClose={close}
         >
           <div className="toolbar" style={{ marginBottom: 15 }}>
-            <button
-              onClick={() => {
-                modal.kind === "accounts"
-                  ? setAids(accounts.map((x) => x.id))
-                  : setCids(cards.filter((x) => !x.used).map((x) => x.id));
-                setCheck(null);
-              }}
-            >
-              全选可用
-            </button>
-            <button
-              onClick={() => {
-                modal.kind === "accounts" ? setAids([]) : setCids([]);
-                setCheck(null);
-              }}
-            >
-              取消选择
+            <button onClick={() => selectAll(modal.kind, true)}>全选</button>
+            <button onClick={() => selectAll(modal.kind, false)}>
+              取消全选
             </button>
           </div>
           <DataTable
             kind={modal.kind}
-            data={
-              modal.kind === "accounts"
-                ? accounts
-                : cards.filter((c) => !c.used)
-            }
+            data={modal.kind === "accounts" ? accounts : cards}
             ids={modal.kind === "accounts" ? aids : cids}
             toggle={(id) =>
               toggle(
@@ -1639,7 +1885,7 @@ export default function App() {
           />
           <div className="modal-footer">
             <button className="primary" onClick={close}>
-              确认选择
+              完成
             </button>
           </div>
         </Modal>
@@ -1734,7 +1980,10 @@ export default function App() {
               onClick={() =>
                 act(async () => {
                   const r = await api(
-                    "/tasks/test-address?network_id=" + networkId,
+                    "/tasks/test-address?network_id=" +
+                      (nids[0] ||
+                        networks.find((n) => n.protocol === "Direct")?.id ||
+                        1),
                     "POST",
                     editor,
                   );
@@ -1852,7 +2101,7 @@ export default function App() {
           error={error}
           notice={notice}
           title="真实浏览器截图"
-          description="输入框和 iframe 已遮罩。"
+          description="完整页面证据；各页面与 iframe 内的输入框已遮罩。"
           onClose={close}
         >
           <img
@@ -1883,7 +2132,7 @@ function DataTable({ kind, data, ids, toggle, clear, retest }) {
               </>
             )}
             <th>创建时间</th>
-            {clear && <th>操作</th>}
+            {clear && kind === "accounts" && <th>操作</th>}
           </tr>
         </thead>
         <tbody>
@@ -1918,7 +2167,7 @@ function DataTable({ kind, data, ids, toggle, clear, retest }) {
                 </>
               )}
               <td>{time(x.created_at)}</td>
-              {clear && (
+              {clear && kind === "accounts" && (
                 <td>
                   <div className="toolbar">
                     <button onClick={() => clear(x.id)}>清除 Session</button>

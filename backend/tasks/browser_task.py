@@ -4,6 +4,7 @@ import re
 import time
 from urllib.parse import urlsplit
 from playwright.async_api import Error as BrowserError
+from backend.result_wait import wait_terminal
 
 class Outcome(Exception):
     def __init__(self, code, status='ERROR'):
@@ -28,7 +29,7 @@ async def execute_task(page, config, credentials, card, step, cancelled, save_se
     async def has(locator):
         return await locator.count() > 0 and await locator.first.is_visible()
     email = page.get_by_role('textbox', name=re.compile('email',re.I))
-    if config['adapter'] == 'sandbox':
+    if config['adapter'] in ('sandbox','contract_binding'):
         email = page.locator('input[name="email"]')
     password = page.locator('input[type="password"]')
     add = page.get_by_role('button',name=re.compile(r'^Add card$',re.I))
@@ -79,20 +80,40 @@ async def execute_task(page, config, credentials, card, step, cancelled, save_se
     await wait_for(form_ready,timeout,cancelled)
     step('FORM_OPEN','Add Card opened',page)
     if config['environment'] == 'Production':
-        return 'SUCCESS','UI_VERIFIED'
+        step('FINAL_STATE_DETECTED','UI_VERIFIED',page)
+        return {'status':'SUCCESS','code':'UI_VERIFIED','reason':'Add Card form visibly verified'}
     if not config['authorized'] or not card:
         raise Outcome('INVALID_CONFIGURATION')
+    from backend.tasks.data_contract import validate_data
+    if validate_data(config,card): raise Outcome('INVALID_DATA','FAIL')
     # Strict adapter contract; never guess selectors or infer success from absence of errors.
     step('FILLING','Filling synthetic test data',page)
     for field,key in [('card_number','number'),('month','month'),('year','year'),('cvc','cvc')]:
         cancelled()
         await page.locator(f'input[name="{field}"]').fill(card[key],timeout=timeout*1000)
-    step('SUBMITTING','Submitting',page)
-    await page.get_by_role('button',name='Submit',exact=True).click()
-    step('WAITING_RESULT','Waiting result',page)
+    blocked = False
+    def response_received(response):
+        nonlocal blocked
+        if response.status in (403,429) and urlsplit(response.url).netloc == urlsplit(config['target_url']).netloc:
+            blocked = True
+    page.on('response',response_received)
     async def parse_result():
+        if blocked or await has(page.locator('[data-result="ACCESS_BLOCKED"], [data-security="captcha"]')):
+            return {'terminal':True,'status':'ERROR','code':'ACCESS_BLOCKED','reason':'Site access/security restriction; no IP rotation'}
+        if await has(page.locator('[aria-busy="true"], [data-processing="true"], [role="progressbar"]')):
+            return {'processing':True}
         for code in ('3DS_REQUIRED','DECLINED','INVALID_DATA','BOUND'):
             if await has(page.locator(f'[data-result="{code}"]')):
-                return ('SUCCESS' if code == 'BOUND' else 'FAIL',code)
-        return None
-    return await wait_for(parse_result,timeout,cancelled,'UNKNOWN_RESULT')
+                return {'terminal':True,'status':'SUCCESS' if code=='BOUND' else 'FAIL','code':code,'reason':f'Visible adapter terminal marker: {code}'}
+        for frame in page.frames[1:]:
+            marker=frame.locator('[data-result="3DS_REQUIRED"]')
+            if await marker.count() and await marker.first.is_visible() and await (await frame.frame_element()).is_visible():
+                return {'terminal':True,'status':'FAIL','code':'3DS_REQUIRED','reason':'Verification iframe loaded with visible challenge marker'}
+        return {'processing':False}
+    try:
+        step('SUBMITTING','Submitting',page)
+        await page.get_by_role('button',name='Submit',exact=True).click()
+        step('WAITING_RESULT','waiting for terminal state',page)
+        return await wait_terminal(page,parse_result,timeout,cancelled,step)
+    finally:
+        page.remove_listener('response',response_received)

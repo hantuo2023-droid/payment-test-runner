@@ -12,8 +12,8 @@ from backend.store import rows, connect, execute, now, seal, unseal
 
 router = APIRouter(prefix='/api/import', dependencies=[Depends(require_admin)])
 EMAIL = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-# Synthetic fixtures only; no real card acceptance or bulk production checking.
-FIXTURES = {'4242424242424242':'BOUND','4000000000000002':'DECLINED','4000000000003220':'3DS_REQUIRED','4000000000000069':'INVALID_DATA','4000000000009995':'TIMEOUT'}
+from backend.tasks.data_contract import FIXTURES
+from backend.network_import import network_key, network_line
 
 def parse(text, kind, existing=()):
     seen = set(existing)
@@ -23,9 +23,21 @@ def parse(text, kind, existing=()):
         line = raw.strip()
         if not line:
             continue
-        if line.lower().replace(' ', '') in ('email,password','number,month,year,cvc'):
+        if line.lower().replace(' ', '') in ('email,password','number,month,year,cvc','name,protocol,host,port,username,password'):
             continue
         count += 1
+        if kind == 'networks':
+            try:
+                item = network_line(line)
+                key = network_key(item)
+            except (ValueError,csv.Error):
+                errors.append({'line':number,'raw':'[节点凭据已隐藏]','reason':'节点格式错误：HTTP/SOCKS5 + Host + 1–65535 端口；SOCKS5 不支持用户名密码认证'})
+                continue
+            if key in seen: duplicate += 1
+            else:
+                seen.add(key)
+                valid.append(item)
+            continue
         try:
             parts = [p.strip() for p in (line.split('----',1) if kind == 'accounts' and '----' in line and '|' not in line else line.split('|') if '|' in line else next(csv.reader([line],strict=True)))]
         except csv.Error:
@@ -47,8 +59,8 @@ def parse(text, kind, existing=()):
                 error = '需要四列：测试卡号 | 月份 | 四位年份 | CVC'
             else:
                 pan = re.sub(r'[ -]', '', parts[0])
-                if pan not in FIXTURES:
-                    error = '仅接受文档中列出的合成测试卡，不接收真实银行卡'
+                if not re.fullmatch(r'\d{12,19}',pan):
+                    error = '需要 12–19 位官方测试卡号；仅用于授权非 Production 环境'
                 elif not parts[1].isdigit() or not 1 <= int(parts[1]) <= 12 or not re.fullmatch(r'\d{4}',parts[2]) or not re.fullmatch(r'\d{3,4}',parts[3]):
                     error = '月份、四位年份或 CVC 格式错误'
                 elif (int(parts[2]),int(parts[1])) < (datetime.now().year,datetime.now().month):
@@ -72,10 +84,11 @@ class Preview(BaseModel):
 
 @router.post('/preview')
 def preview(body: Preview):
-    if body.kind not in ('accounts','cards'):
+    if body.kind not in ('accounts','cards','networks'):
         raise HTTPException(400,'不支持的数据类型')
     column = 'email' if body.kind == 'accounts' else 'fingerprint'
-    summary, valid = parse(body.text,body.kind,[r[column] for r in rows(f'SELECT {column} FROM {body.kind}')])
+    existing = [network_key(r) for r in rows('SELECT * FROM networks')] if body.kind == 'networks' else [r[column] for r in rows(f'SELECT {column} FROM {body.kind}')]
+    summary, valid = parse(body.text,body.kind,existing)
     token = secrets.token_urlsafe(24)
     execute("DELETE FROM previews WHERE created_at < datetime('now','-1 day')")
     execute('INSERT INTO previews VALUES(?,?,?,?)',(token,body.kind,seal(valid),now()))
@@ -95,8 +108,11 @@ def confirm(body: Confirm):
         for item in unseal(preview['secret']):
             if preview['kind'] == 'accounts':
                 cursor = db.execute('INSERT OR IGNORE INTO accounts(email,secret,created_at) VALUES(?,?,?)',(item['email'],seal(item['password']),now()))
-            else:
+            elif preview['kind'] == 'cards':
                 cursor = db.execute('INSERT OR IGNORE INTO cards(fingerprint,masked,secret,created_at) VALUES(?,?,?,?)',(item['fingerprint'],item['masked'],seal(item),now()))
+            else:
+                if network_key(item) in {network_key(dict(n)) for n in db.execute('SELECT * FROM networks')}: continue
+                cursor = db.execute('INSERT INTO networks(name,protocol,host,port,username,secret) VALUES(?,?,?,?,?,?)',(item['name'],item['protocol'],item['host'],item['port'],item['username'],seal(item['password'])))
             added += cursor.rowcount
         db.execute('DELETE FROM previews WHERE id=?',(body.preview_id,))
     return {'imported':added}

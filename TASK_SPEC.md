@@ -1,593 +1,427 @@
-从零开发一个全新的 Web 工具。
+请基于当前已经完成的 Payment Test Runner 0.1.0 继续修改。
 
-项目名称：
-Payment Test Runner
+不要从零重写。
+不要重新设计已经验证正常的核心模块。
+不要把项目重新做成复杂 QA 平台。
 
-目标非常明确：
+当前已验证实现版本：
 
-做一个稳定、操作简单、方便管理的浏览器自动化测试工具。
+37406b1
 
-用户最常用的流程只有：
+开始修改前请先阅读：
 
-导入账号
-→ 导入测试数据
-→ 自动整理格式
-→ 自动去重
-→ 选择账号
-→ 选择任务
-→ 选择网络
-→ START
-→ 真实 Chromium 自动执行
-→ 查看 SUCCESS / FAIL / ERROR
-→ 查看具体原因
-→ TXT / CSV 导出
-→ 删除没用的数据
+README.md
+ACCEPTANCE.md
+TASK_SPEC.md
+TASK_STATE.md
+当前代码和现有测试
 
-不要把它做成复杂 QA 平台。
+本次是在现有 0.1.0 基础上修正产品核心使用逻辑，并建议版本升级为：
 
-不要加入：
+0.2.0
+
+==================================================
+一、不要重写已经验证正常的功能
+==================================================
+
+当前已经验证正常的能力包括：
+
+真实 Playwright Chromium
+LIVE only
+Login
+Session
+Add Card
+Fill
+Submit
+Result Parser
+BOUND
+DECLINED
+3DS_REQUIRED
+INVALID_DATA
+UNKNOWN_RESULT
+BAD_CREDENTIALS
+LOGIN_TIMEOUT
+STOP
+Run Isolation
+Screenshot
+Trace
+Logs
+TXT / CSV Export
+Cleanup
+
+这些功能尽量保持现有实现。
+
+只做实现下面新需求所必要的修改。
+
+不要重新增加：
+
 Workflow Builder
 Page Mapping
 Case Builder
 Selector Editor
-复杂 Environment 管理
-其他普通用户根本不需要理解的功能。
+复杂 QA 配置
+复杂 Scheduler 配置
 
 ==================================================
-1. 已知真实目标站点
+二、这个工具真正的目的
 ==================================================
 
-内置一个 Preply 页面任务。
+这个工具最主要的目的：
 
-真实站点：
+减少用户重复人工输入测试数据。
 
-https://preply.com
+正常使用流程应该非常简单：
 
-主要目标页面：
-
-https://preply.com/en/settings/payments
-
-程序应该优先直接访问：
-
-https://preply.com/en/settings/payments
-
-如果账号没有登录，网站可能正常跳转到类似：
-
-https://preply.com/en/login?next=/en/settings/payments
-
-不要把完整动态 login URL 当成唯一固定入口。
-
-正确逻辑：
-
-打开：
-https://preply.com/en/settings/payments
-
-如果已经登录：
-→ 进入 Payment Methods
-
-如果跳转到登录：
-→ 识别 Login 页面
-
-登录页面至少识别：
-
-Email
-Password
-Log In
-
-登录成功以后：
-
-再次进入：
-https://preply.com/en/settings/payments
-
-然后识别：
-
-Payment methods
-Add card
-
-可以打开：
-
-Add card
-
-并确认：
-
-Save a payment card
-
-弹窗/表单正常出现。
-
-这个真实 Preply Production Task 用于：
-登录
-页面导航
-Payment Methods
-Add Card UI 验证
-
-不要把真实 Production 网站拿来自动提交真实银行卡。
-
-完整 Card Binding：
-填写测试卡
-→ Submit
-→ 判断结果
-
-必须在用户明确授权的：
-Sandbox
-QA
-Staging
-Internal
-
-测试环境执行。
-
-==================================================
-2. 工具必须支持完整 Card Binding 测试
-==================================================
-
-这是工具的重要能力。
-
-在授权测试环境中必须真正执行：
-
-登录账号
-→ 打开目标支付页面
-→ Add Card
-→ 等待卡片表单
-→ 填写测试卡号
-→ 填写有效期
-→ 填写 CVC
-→ Submit
-→ 等待测试环境返回
-→ 判断结果
-
-不能只：
-
-打开 Add Card
-→ PASS
-
-不能：
-
-发现输入框
-→ PASS
-
-不能：
-
-代码没有异常
-→ PASS
-
-完整任务必须真正完成：
-
-FILL
+批量导入账号
 +
-SUBMIT
+批量导入测试数据
 +
-WAIT RESULT
+批量导入节点
+↓
+选择 Task
+↓
+START
+↓
+真实 Chromium 全自动执行
+↓
+一直运行到本次待测试数据全部完成
+↓
+查看结果
+↓
+导出 / 删除 / 清理
+
+不要让用户配置：
+
+一个账号跑几条测试数据
+
+一个节点跑几个任务
+
+账号数量必须等于测试数据数量
+
+1 个账号只能对应 1 条测试数据
+
+每一条测试数据人工指定账号
+
+每一条测试数据人工指定节点
+
+不要设计这种额外工作。
+
+==================================================
+三、使用“三个资源池”
+==================================================
+
+系统主要有三个资源池：
+
+账号池
+
+测试数据池
+
+节点池
+
+三类资源都必须支持批量管理。
+
+用户默认使用方式：
+
+导入
+→ START
+
+如果用户不手工修改选择：
+
+所有当前有效、可用、已选择的数据默认参与本次运行。
+
+只有用户想排除某些数据时：
+
+才去列表取消勾选。
+
+==================================================
+四、执行数量只由测试数据决定
+==================================================
+
+这是本次最重要的规则之一。
+
+对于需要测试数据的 Card Binding Task：
+
+本次选择多少条测试数据，
+
+就必须执行多少条。
+
+公式：
+
+RunItems = selected_test_data_count
+
+绝对不要再：
+
+min(account_count, test_data_count)
+
+绝对不要再：
+
+1 account = 1 test data
+
+例如：
+
+1 个账号
 +
-PARSE RESULT
-
-才能结束。
-
-结果至少支持：
-
-SUCCESS / BOUND
-
-FAIL / DECLINED
-
-FAIL / 3DS_REQUIRED
-
-FAIL / INVALID_DATA
-
-ERROR / BAD_CREDENTIALS
-
-ERROR / LOGIN_TIMEOUT
-
-ERROR / NETWORK_ERROR
-
-ERROR / TARGET_NOT_FOUND
-
-ERROR / UNKNOWN_RESULT
-
-如果无法判断结果：
+10 条测试数据
++
+1 个节点
 
 必须：
 
-ERROR / UNKNOWN_RESULT
+RunItems = 10
 
-绝不能默认 SUCCESS。
+Fill = 10
 
-==================================================
-3. 测试地址必须可以自己添加和修改
-==================================================
+Submit = 10
 
-除了内置 Preply Task，
-
-用户必须可以在后台：
-
-新增任务
-修改任务
-启用
-停用
-测试地址
-
-任务页面提供：
-
-[新增任务]
-
-字段：
-
-任务名称
-
-任务说明
-
-环境类型：
-Production
-Sandbox
-QA
-Staging
-Internal
-
-Base URL
-
-Login URL
-
-Target URL
-
-状态：
-启用 / 停用
-
-每个字段必须明确告诉用户：
-
-这个字段是什么
-是否必填
-正确格式
-示例
+Results = 10
 
 例如：
 
-Target URL
+3 个账号
++
+100 条测试数据
++
+5 个节点
 
-用途：
-登录成功后需要进入的目标测试页面
+必须：
 
-格式：
-完整 URL
+RunItems = 100
 
-示例：
-https://preply.com/en/settings/payments
+最终：
 
-必填：
-是
-
-提供：
-
-[测试地址]
-[保存]
-
-用户选择哪个 Task：
-
-本次 Run 就只使用这个 Task 的配置。
-
-绝不能：
-
-当前 Task 缺少 URL
-→ 自动使用其他 Task 的 URL
-
-绝不能：
-
-配置错误
-→ 随机找一个可用配置继续运行
-
-缺少必要信息：
-
-START 直接禁止。
+100 条独立结果。
 
 ==================================================
-4. 不需要先知道支付商
+五、每条测试数据在一个 Run 内只执行一次
 ==================================================
 
-不要要求用户先配置：
+每一条本次选中的测试数据：
 
-Stripe
-Adyen
-某个支付商
+只创建一个 RunItem。
 
-才能使用软件。
+不要因为：
 
-这是浏览器自动化测试工具。
+多个账号
 
-用户主要需要知道：
+多个节点
+
+而形成笛卡尔积。
+
+例如：
+
+10 accounts
++
+100 test data
++
+10 nodes
+
+不是：
+
+10 × 100 × 10
+
+而是：
+
+100 RunItems
+
+账号和节点：
+
+属于可复用资源。
+
+测试数据：
+
+才是待执行任务。
+
+==================================================
+六、不要增加“每账号跑多少条”设置
+==================================================
+
+用户不需要设置：
+
+Account A = 5 cards
+
+Account B = 20 cards
+
+Node A = 10 tasks
+
+Node B = 30 tasks
+
+这些设置全部不要。
+
+账号和节点只要：
+
+被本次 Run 选择
+
+并且：
+
+有效 / 可用
+
+就可以由系统内部自动使用。
+
+内部调度必须：
+
+简单
+确定
+可预测
+
+并在每条结果中记录：
+
+实际使用的账号
+
+实际使用的节点
+
+不要随机分配。
+
+不要让普通用户配置复杂调度规则。
+
+==================================================
+七、允许用户自己选择本次资源
+==================================================
+
+虽然默认使用全部有效资源，
+
+但是用户必须能够自己决定本次 Run 使用哪些：
 
 账号
+
 测试数据
-目标 URL
-任务
-网络
 
-如果某个具体测试环境以后需要特殊支付页面解析：
+节点
 
-由该 Task 内部实现。
+例如数据库里有：
 
-不要把支付商配置暴露成普通用户必须理解的复杂步骤。
+20 个账号
 
-==================================================
-5. 首页必须非常简单
-==================================================
+100 条测试数据
 
-一级菜单只允许：
+10 个节点
 
-首页
-账号
-测试数据
-运行记录
-任务
-设置
+用户可以选择：
 
-首页：
+3 个账号
 
-Payment Test Runner
+25 条测试数据
 
-版本：
-x.x.x
-
-运行模式：
-LIVE
-
-系统状态：
-
-Backend       ✓
-Database      ✓
-Worker        ✓
-Chromium      ✓
-Network       ✓
-Disk          ✓
+2 个节点
 
 然后：
 
-① 账号
+START
 
-已导入：100
-已选择：20
+系统只能使用：
 
-[导入账号]
-[选择账号]
+这 3 个账号
 
-② 测试数据
+这 25 条测试数据
 
-可用：20
-已选择：20
+这 2 个节点
 
-[导入测试数据]
+本次：
 
-③ 任务
+RunItems = 25
 
-[任务 ▼]
+START 后：
 
-显示：
+仍然自动执行到底。
 
-任务名称
-目标地址
-简单说明
+“自己搭配”指的是：
 
-④ 网络
+决定本次允许使用哪些资源。
 
-[Direct ▼]
+不要要求用户逐条创建：
 
-⑤ 准备状态
+Account → Test Data → Node
 
-账号          ✓
-测试数据      ✓
-任务          ✓
-目标地址      ✓
-Chromium      ✓
-网络          ✓
-
-[ START ]
-
-缺任何必要条件：
-
-START 必须 disabled。
-
-直接显示原因。
-
-例如：
-
-请先选择账号
-
-测试数据不足
-
-Task 缺少 Target URL
-
-网络连接测试失败
-
-不要开始后才报错。
+Mapping。
 
 ==================================================
-6. 账号导入
+八、只保留全自动执行
 ==================================================
 
-账号页面必须明显提供：
+不要半自动模式。
 
-[粘贴导入]
-[TXT 导入]
-[CSV 导入]
-[导出]
-[删除选中]
-[清空]
-[搜索]
-[筛选]
+不要：
 
-至少支持：
+提交前暂停
 
-email@example.com|password
+人工点击继续
 
-以及：
+人工操作浏览器
 
-email@example.com----password
+手动确认每一条
 
-文本解析必须自动：
+START 后必须全自动：
 
-忽略空行
-去除前后空格
-清理分隔符附近多余空格
-识别支持的分隔符
-规范成统一内部格式
-检测重复
-检测明显错误
-
-例如：
-
-   test@example.com   |   abc123
-
-自动整理成：
-
-test@example.com|abc123
-
-能确定的格式问题：
-
-自动修正。
-
-不能确定：
-
-不要猜。
-
-标记错误。
-
-导入前必须 Preview：
-
-总数：110
-有效：100
-重复：8
-错误：2
-
-错误数据必须显示：
-
-行号
-原始内容
-错误原因
-
-例如：
-
-第 18 行
-缺少密码
-
-第 35 行
-邮箱格式错误
-
-用户点击：
-
-[确认导入]
-
-之后才写数据库。
-
-重复账号默认不要重复保存。
+建立 Run
+→ 建立 RunItems
+→ 获取账号
+→ 获取节点
+→ Chromium
+→ Login / Session
+→ Target
+→ Add Card
+→ Fill
+→ Submit
+→ 等待最终结果
+→ 保存结果
+→ 下一条
+→ 下一条
+→ …
+→ 队列清空
+→ Run 完成
 
 ==================================================
-7. 账号管理
+九、账号必须支持完整批量导入 / 导出
 ==================================================
 
-账号列表至少显示：
+账号页面必须支持：
 
-Email
+粘贴批量导入
 
-状态
+TXT 导入
 
-Session
+CSV 导入
 
-上次结果
-
-创建时间
-
-支持：
+批量导出
 
 搜索
 
-筛选
+单选
 
-多选
+任意多选
+
+全选
+
+取消全选
 
 删除选中
 
 清空
 
-导出
+至少继续支持：
 
-重新测试
+email@example.com|password
 
-清除 Session
+email@example.com----password
 
-密码必须安全存储。
+CSV：
 
-不能出现在：
+email,password
 
-普通列表
-运行日志
-结果导出
-错误信息
+导入自动：
 
-==================================================
-8. Session 自动处理
-==================================================
+忽略空行
 
-普通用户不需要理解 storage_state。
+Trim
 
-账号只显示：
+整理分隔符
 
-NONE
+邮箱规范化
 
-VALID
+检测重复
 
-EXPIRED
+检测错误
 
-逻辑：
-
-NONE
-
-→ 正常登录
-→ 成功后保存 Session
-
-VALID
-
-→ 优先使用 Session
-→ 尝试直接进入 Target URL
-
-EXPIRED
-
-→ 自动重新登录
-→ 更新 Session
-
-账号操作只提供：
-
-[清除 Session]
-
-[重新登录]
-
-==================================================
-9. 测试数据导入
-==================================================
-
-必须有独立：
-
-测试数据
-
-页面。
-
-明显提供：
-
-[粘贴导入]
-[TXT 导入]
-[CSV 导入]
-[导出安全字段]
-[删除选中]
-[清空]
-[搜索]
-[筛选]
-
-测试支付数据用于授权测试环境。
-
-导入流程和账号一样：
-
-文本解析
-→ 格式整理
-→ 去重
-→ 错误检测
-→ Preview
-→ 确认导入
-
-显示：
+Preview：
 
 总数
 
@@ -597,202 +431,661 @@ EXPIRED
 
 错误
 
-已使用
+错误显示：
 
-未使用
+行号
 
-敏感数据显示必须遮罩。
+安全摘要
+
+错误原因
+
+不能把密码通过错误结果重新回显。
+
+==================================================
+十、账号选择不能再多一步
+==================================================
+
+账号列表中的 checkbox：
+
+就是：
+
+是否参加下一次 Run。
+
+不要：
+
+先 checkbox
+
+然后还需要再点击：
+
+“标记已选”
+
+才真正生效。
+
+必须支持：
+
+单独选择
+
+任意多选
+
+全选
+
+取消全选
+
+导入成功且有效的新账号：
+
+默认 selected = true
+
+这样普通用户：
+
+导入
+→ START
+
+不用重新手工全选一次。
+
+==================================================
+十一、测试数据必须支持完整批量管理
+==================================================
+
+测试数据支持：
+
+粘贴批量导入
+
+TXT
+
+CSV
+
+批量导出安全字段
+
+搜索
+
+单选
+
+任意多选
+
+全选
+
+取消全选
+
+删除选中
+
+清空
+
+继续支持：
+
+格式整理
+
+去重
+
+Preview
+
+错误检查
+
+普通列表只显示遮罩数据。
 
 例如：
 
-**** **** **** 4242
+****4242
 
-敏感认证字段：
+CVC 等敏感字段：
 
-不能显示在普通列表
+不显示在普通列表
 
-不能写普通日志
+不写普通日志
 
-不能出现在普通结果导出
+不出现在普通导出
 
 ==================================================
-10. 数据配对
+十二、测试数据默认直接参加运行
 ==================================================
 
-第一版保持简单。
+导入成功且有效的新测试数据：
 
-默认：
+默认 selected = true
 
-1 个账号
-对应
-1 条测试数据
+例如用户导入：
 
-开始前明确显示：
+100 条
 
-账号：20
+首页直接显示：
 
-测试数据：20
+本次待执行：
 
-可执行：20
+100
 
-如果：
+用户可以：
 
-账号：20
+START
 
-测试数据：8
+系统直接跑 100 条。
+
+如果用户只需要其中 17 条：
+
+取消其他数据
+
+则：
+
+selected = 17
+
+START 后：
+
+RunItems = 17
+
+不要只能：
+
+全选全部数据。
+
+必须真正支持逐条选择和取消。
+
+==================================================
+十三、Local Sandbox 五种合成卡只限制 Sandbox
+==================================================
+
+当前 README 有：
+
+“当前版本只接受五个合成卡号”
+
+必须明确：
+
+这个限制只属于：
+
+Local Sandbox fixture
+
+Local Sandbox 可以继续使用固定合成测试数据：
+
+BOUND
+
+DECLINED
+
+3DS_REQUIRED
+
+INVALID_DATA
+
+UNKNOWN_RESULT
+
+这是为了验证程序。
+
+但是：
+
+整个 Test Data 数据库和导入层
+
+不能只允许这五条 fixture。
+
+对于用户明确授权的：
+
+Sandbox
+
+QA
+
+Staging
+
+Internal
+
+应该允许导入该测试环境官方允许的测试数据。
+
+实际数据结构和填写规则：
+
+由 Task / Adapter 决定。
+
+不要支持或宣传第三方 Production 的真实银行卡验证。
+
+==================================================
+十四、节点升级为正式资源池
+==================================================
+
+节点也必须像账号和测试数据一样方便管理。
+
+节点页面或：
+
+设置 → 节点
+
+必须容易找到。
+
+支持：
+
+Direct
+
+HTTP
+
+SOCKS5
+
+以及：
+
+批量粘贴导入
+
+TXT
+
+CSV
+
+批量导出
+
+格式解析
+
+去重
+
+搜索
+
+单选
+
+任意多选
+
+全选
+
+取消全选
+
+删除选中
+
+清空
+
+批量连接测试
+
+延迟显示
+
+状态显示
+
+==================================================
+十五、节点导入格式
+==================================================
+
+至少支持：
+
+http://host:port
+
+http://username:password@host:port
+
+socks5://host:port
+
+CSV：
+
+name,protocol,host,port,username,password
+
+如果当前 Chromium / Playwright 对某种代理认证有限制：
+
+必须在 UI 或 Preview 明确告诉用户。
+
+不要等真正执行以后才突然失败。
+
+导入 Preview：
+
+总数
+
+有效
+
+重复
+
+格式错误
+
+节点导入后可以：
+
+批量 Test Connection
 
 显示：
 
-本次最多执行 8 条。
+CONNECTED
 
-不要在同一个 Run 内偷偷重复使用测试数据。
+FAILED
 
-==================================================
-11. 真实 Chromium
-==================================================
+LATENCY
 
-正常运行默认：
+节点密码：
 
-LIVE
+不显示在普通列表
 
-LIVE 必须代表：
+不写普通日志
 
-真实 Playwright
-
-真实 Chromium
-
-真实网页操作
-
-真实 Screenshot
-
-真实 Trace
-
-Mock 仅用于开发自动化测试。
-
-如果进入 Mock：
-
-前端必须醒目显示：
-
-MOCK MODE
-
-模拟结果，不是真实浏览器运行。
-
-严格禁止：
-
-LIVE 出错
-→ 自动切换 Mock
-→ 返回成功
-
-真实运行失败：
-
-就显示真实 ERROR。
+不出现在普通导出
 
 ==================================================
-12. 页面状态必须稳定判断
+十六、节点默认参与逻辑
 ==================================================
+
+格式有效的新节点：
+
+默认 selected = true
+
+但是实际执行只能使用：
+
+Healthy / Connected
+
+节点。
+
+FAILED 节点：
+
+保留在列表
+
+但不参加自动执行。
+
+重新 Test Connection 成功后：
+
+重新可用。
+
+如果用户没有导入任何代理节点：
+
+系统默认：
+
+Direct
+
+==================================================
+十七、不要利用节点规避站点限制
+==================================================
+
+节点用于正常授权测试网络。
 
 不要实现：
 
-page.goto
-→ 马上检测一次
-→ 找不到
-→ PAGE_ERROR
+CAPTCHA 出现 → 自动换 IP
 
-必须实现页面状态等待。
+Rate Limit → 自动换 IP
 
-建议状态：
+Login Block → 自动换 IP
 
-QUEUED
+403 / 429 等情况：
 
-STARTING_BROWSER
-
-NAVIGATING
-
-WAITING_PAGE
-
-AUTH_REQUIRED
-
-AUTHENTICATING
-
-AUTH_SUCCESS
-
-TARGET_LOADING
-
-TARGET_READY
-
-FORM_OPEN
-
-FILLING
-
-SUBMITTING
-
-WAITING_RESULT
-
-COMPLETED
-
-ERROR
-
-CANCELLED
-
-页面发生正常 redirect/navigation：
-
-不能马上 ERROR。
-
-以前已经出现过典型问题：
-
-页面 DOMContentLoaded
-→ 客户端稍后跳转
-→ 程序检测太快
-→ 错误 PAGE_ERROR
-→ 截到白屏
-
-新工具必须避免。
-
-Playwright 如果在正常导航期间出现：
-
-Execution context was destroyed because of navigation
-
-应该视为 navigation transient state。
-
-继续等待页面稳定并重新判断。
-
-真正超时后才 ERROR。
+按现有安全逻辑记录并停止对应项目。
 
 ==================================================
-13. START 后的界面
+十八、首页必须做到“导入后直接 START”
 ==================================================
 
-点击 START：
+首页至少显示：
 
-创建新的 Run ID。
+账号：
+
+总数
+可用
+本次使用
+
+测试数据：
+
+总数
+待执行
+本次使用
+
+节点：
+
+总数
+Healthy
+本次使用
+
+Task
+
+Mode：
+
+LIVE
+
+以及：
+
+本次预计执行：
+
+N 条
 
 例如：
 
-Run #102
+Accounts:
+3 selected
 
-显示：
+Test Data:
+100 selected
 
-任务：
+Nodes:
+5 selected / 4 healthy
 
-目标：
+Task:
+Local Sandbox Binding
 
-网络：
+预计执行：
 
-开始时间：
+100
 
-进度：
+[ START ]
 
-8 / 20
+不要再增加：
 
-当前账号：
+每账号执行数量
 
-test@example.com
+每节点任务数量
 
-当前步骤：
+卡片配额
 
-正在提交测试数据
+==================================================
+十九、Readiness 检查
+==================================================
 
-统计：
+START 前检查：
+
+Backend
+
+Database
+
+Worker
+
+Chromium
+
+Task
+
+Target URL
+
+至少一个有效账号
+
+至少一条 selected 测试数据
+（需要测试数据的 Task）
+
+至少一个可用 Network
+（Direct 也算）
+
+不满足：
+
+START disabled
+
+并告诉用户具体原因。
+
+==================================================
+二十、Session 必须充分复用
+==================================================
+
+同一个账号连续处理多条数据时：
+
+优先复用：
+
+当前 Browser Context
+
+Session
+
+不要：
+
+每测试一条
+→ 重新登录一次
+
+正常情况下：
+
+1 account
++
+10 test data
+
+应该：
+
+Login ≈ 1
+
+Fill = 10
+
+Submit = 10
+
+Results = 10
+
+只有：
+
+Session expired
+
+被退出
+
+重新出现认证页
+
+才重新登录。
+
+==================================================
+二十一、坏账号不能拖死整个 Run
+==================================================
+
+如果某个账号明确出现：
+
+BAD_CREDENTIALS
+
+登录失败
+
+Session 无法恢复
+
+应该：
+
+记录账号不可用
+
+保存对应错误
+
+当前 Run 中暂时停止继续使用这个账号
+
+如果还有其他可用账号：
+
+继续处理剩余测试数据
+
+如果：
+
+所有账号都不可用
+
+再停止剩余任务并明确：
+
+NO_AVAILABLE_ACCOUNT
+
+不要无限尝试坏账号。
+
+==================================================
+二十二、坏节点不能拖死整个 Run
+==================================================
+
+如果节点：
+
+NETWORK_ERROR
+
+Connection Failed
+
+确认不可用
+
+当前 Run 暂时停止使用。
+
+如果还有其他已选择 Healthy 节点：
+
+继续。
+
+如果全部不可用：
+
+明确结束并给出：
+
+NO_AVAILABLE_NETWORK
+
+不要无限重试。
+
+==================================================
+二十三、提交以后绝对不能马上给结果
+==================================================
+
+这是本次最重要的稳定性要求之一。
+
+以前旧版本真实出现过：
+
+Fill
+→ Submit
+→ 页面正在转圈 / redirect
+→ 程序检查太快
+→ 页面最终信息还没有出来
+→ 程序已经给结果
+→ Screenshot 甚至是空白页
+
+新版本绝对不能再次出现。
+
+点击 Submit：
+
+绝对不代表当前测试已经完成。
+
+==================================================
+二十四、正确的提交后流程
+==================================================
+
+必须：
+
+FILLING
+↓
+SUBMITTING
+↓
+WAITING_RESULT
+↓
+观察页面
+↓
+处理 Redirect
+↓
+处理 Spinner / Loading
+↓
+等待安全验证 / 3DS / 成功 / 失败等状态
+↓
+检测真正最终状态
+↓
+FINAL_STATE_DETECTED
+↓
+Screenshot / Trace / Log
+↓
+保存结果
+↓
+当前 RunItem 才结束
+
+不能：
+
+Submit click 成功
+→ SUCCESS
+
+不能：
+
+没有异常
+→ SUCCESS
+
+不能：
+
+页面跳转
+→ SUCCESS
+
+不能：
+
+500ms 没看到内容
+→ UNKNOWN_RESULT
+
+==================================================
+二十五、中间状态不能当最终结果
+==================================================
+
+以下都不是 Final Result：
+
+Loading
+
+Processing
+
+Please wait
+
+Spinner
+
+Skeleton
+
+按钮 Disabled
+
+Submit 按钮暂时消失
+
+页面空白过渡状态
+
+页面正在 redirect
+
+DOM 正在 reload
+
+Execution context destroyed during navigation
+
+这些状态：
+
+只能继续等待。
+
+不能直接：
 
 SUCCESS
 
@@ -800,89 +1093,490 @@ FAIL
 
 ERROR
 
-RUNNING
+UNKNOWN_RESULT
 
-WAITING
+==================================================
+二十六、结果判断必须读取最终页面信息
+==================================================
 
-CANCELLED
+成功必须来自明确证据。
 
-实时日志例如：
+例如由当前 Adapter 定义：
 
-Chromium started
+BOUND
 
-Opening target page
+Payment method added
 
-Login required
+Saved successfully
 
-Login form detected
+明确成功提示
 
-Filling credentials
+卡片出现在目标页面
 
-Login successful
+或者该测试环境正式定义的 Success marker
 
-Opening Payment Methods
+不能：
 
-Add Card opened
+“没有看到错误”
+=
+SUCCESS
 
-Filling test data
+失败也必须读取最终信息。
 
-Submitting
-
-Waiting result
+例如：
 
 DECLINED
 
-提供明显：
+INVALID_DATA
 
-[ STOP ]
+Card rejected
 
-==================================================
-14. STOP
-==================================================
+Validation error
 
-点击 STOP：
+明确失败提示
 
-安全停止任务。
+然后才记录：
 
-已经完成的数据：
-
-保留结果。
-
-正在执行的项目：
-
-安全结束。
-
-尚未执行：
-
-CANCELLED。
-
-Chromium：
-
-正确关闭。
-
-Trace：
-
-正确结束。
-
-日志：
-
-正确保存。
+FAIL / 对应 Result Code
 
 ==================================================
-15. 结果必须一眼看懂
+二十七、Spinner / Loading 必须继续等
 ==================================================
 
-运行结果例如：
+如果 Submit 后出现：
 
-账号                  数据          结果       原因
+转圈
 
-a@example.com         ****4242      SUCCESS    BOUND
+Processing
 
-b@example.com         ****4000      FAIL       DECLINED
+Loading
 
-c@example.com         ****3220      FAIL       3DS_REQUIRED
+Please wait
 
-d@example.com         ****1111      ERROR      LOGIN_TIMEOUT
+页面 skeleton
+
+必须继续：
+
+WAITING_RESULT
+
+持续检测。
+
+不能因为页面一两秒没有内容：
+
+就截图
+
+就 ERROR
+
+就 UNKNOWN_RESULT
+
+==================================================
+二十八、Redirect 必须导航容错
+==================================================
+
+Submit 后可能：
+
+Page A
+→ intermediate blank page
+→ Page B
+→ processing
+→ Page C
+→ Final Result
+
+不要只：
+
+wait_for_load_state("domcontentloaded")
+
+然后立即判断。
+
+DOMContentLoaded：
+
+不是业务完成状态。
+
+如果 Playwright 出现：
+
+Execution context was destroyed because of a navigation
+
+如果发生在正常导航中：
+
+视为 transient condition。
+
+继续：
+
+等待页面稳定
+
+读取新 URL
+
+重新检测页面
+
+而不是：
+
+PAGE_ERROR。
+
+==================================================
+二十九、3DS / Security Verification
+==================================================
+
+Submit 后如果进入：
+
+3DS
+
+3-D Secure
+
+Security verification
+
+Bank verification
+
+Challenge page
+
+验证 iframe
+
+等状态，
+
+必须先等到：
+
+验证页面或 iframe 真正加载
+
+有明确可见证据
+
+然后才分类。
+
+当前工具不自动完成或绕过：
+
+3DS
+
+OTP
+
+Security Verification
+
+CAPTCHA
+
+如果 Adapter 判断为：
+
+3DS_REQUIRED
+
+则：
+
+FAIL / 3DS_REQUIRED
+
+并保存：
+
+明确显示验证状态的 Screenshot
+
+Final URL
+
+Trace
+
+Log
+
+Reason
+
+不能在验证页还没加载出来时：
+
+截空白图
+→ 直接返回 3DS。
+
+==================================================
+三十、WAITING_RESULT 必须持续轮询
+==================================================
+
+不能：
+
+检测一次
+→ 没找到
+→ UNKNOWN_RESULT
+
+应该在 Task / Adapter 的 result timeout 内持续观察。
+
+每轮至少检查：
+
+当前 URL
+
+是否 Navigation
+
+是否仍 Loading
+
+是否 Processing
+
+Success marker
+
+Failure marker
+
+3DS / Security marker
+
+Validation error
+
+Adapter Terminal State
+
+直到：
+
+Terminal State
+
+或者真正 Timeout。
+
+==================================================
+三十一、只有真正超时才能 UNKNOWN_RESULT
+==================================================
+
+只有：
+
+Submit 已完成
+
+并且：
+
+整个 Result Wait Timeout 已结束
+
+仍然没有：
+
+Success
+
+Business Fail
+
+3DS / Verification
+
+明确 Technical Error
+
+才允许：
+
+ERROR / UNKNOWN_RESULT
+
+Reason：
+
+No recognized terminal result before timeout
+
+不能：
+
+刚提交
+→ 没看到结果
+→ UNKNOWN_RESULT
+
+==================================================
+三十二、最终结果检测属于 Adapter
+==================================================
+
+不同目标页面最终状态不同。
+
+Task / Adapter 应负责定义：
+
+success markers
+
+failure markers
+
+3ds/security markers
+
+processing markers
+
+terminal URL patterns（如果需要）
+
+result timeout
+
+主 Runner 负责：
+
+等待
+
+循环检测
+
+Navigation 容错
+
+Timeout
+
+Screenshot
+
+Trace
+
+Logs
+
+Result persistence
+
+普通用户：
+
+不要配置复杂 Selector。
+
+==================================================
+三十三、Screenshot 必须在正确时间生成
+==================================================
+
+这是之前真实出现过的问题。
+
+最终 Screenshot：
+
+必须在检测到最终状态以后再生成。
+
+SUCCESS：
+
+截最终成功页面。
+
+DECLINED：
+
+截最终拒绝页面。
+
+INVALID：
+
+截最终错误页面。
+
+3DS_REQUIRED：
+
+截明确的验证页面。
+
+UNKNOWN_RESULT：
+
+真正 Timeout 后：
+
+等待当前页面稳定
+
+再截图当前实际可见状态。
+
+不要：
+
+刚 click Submit
+→ Screenshot
+
+这样会再次得到空白图。
+
+==================================================
+三十四、日志必须把整个提交后过程写清楚
+==================================================
+
+日志例如：
+
+SUBMITTING:
+clicked submit
+
+WAITING_RESULT:
+waiting for terminal state
+
+PROCESSING:
+spinner detected
+
+POST_SUBMIT_NAVIGATION:
+URL changed
+
+WAITING_RESULT:
+still waiting
+
+FINAL_STATE_DETECTED:
+DECLINED
+
+RESULT:
+FAIL / DECLINED
+
+Reason:
+...
+
+或者：
+
+FINAL_STATE_DETECTED:
+3DS_REQUIRED
+
+RESULT:
+FAIL / 3DS_REQUIRED
+
+或者：
+
+RESULT:
+ERROR / UNKNOWN_RESULT
+
+Reason:
+No terminal state detected before timeout
+
+不能：
+
+WAITING_RESULT
+→ Run finished
+
+中间没有最终结果信息。
+
+==================================================
+三十五、每张测试数据必须等待自己的最终结果
+==================================================
+
+批量执行不能为了速度：
+
+Submit Card 1
+→ 不等结果
+→ 直接 Card 2
+
+必须：
+
+Card 1
+→ Fill
+→ Submit
+→ 等到 Card 1 Final Result
+→ 保存 Card 1
+→ 再 Card 2
+
+这样才能保证：
+
+结果不会错位。
+
+==================================================
+三十六、每条结果保存实际资源
+==================================================
+
+每个 RunItem 至少保存：
+
+Run ID
+
+Account ID
+
+Account Email
+
+Test Data ID
+
+Masked Test Data
+
+Network Profile ID
+
+Network Name
+
+Task ID
+
+Task Version
+
+Status
+
+Result Code
+
+Reason
+
+Final Step
+
+Final URL
+
+Started At
+
+Finished At
+
+Duration
+
+Screenshot
+
+Trace
+
+Logs
+
+这样用户能知道：
+
+哪条数据
+
+用了哪个账号
+
+哪个节点
+
+最后是什么结果。
+
+==================================================
+三十七、结果页面
+==================================================
+
+例如：
+
+Account          Test Data    Network    Result    Reason
+
+a@example.com    ****4242     Node-01    SUCCESS   BOUND
+
+b@example.com    ****0002     Node-02    FAIL      DECLINED
+
+a@example.com    ****3220     Direct     FAIL      3DS_REQUIRED
 
 支持：
 
@@ -894,237 +1588,177 @@ FAIL
 
 ERROR
 
+账号筛选
+
+节点筛选
+
 日期筛选
 
-提供明显按钮：
+Run 筛选
 
-[导出 TXT]
+明显按钮：
 
-[导出 CSV]
+导出 TXT
 
-[删除选中]
+导出 CSV
 
-[删除本次 Run]
+删除选中
 
-==================================================
-16. 3DS
-==================================================
-
-完整 Card Binding Test 中：
-
-如果检测到 3DS：
-
-立即停止当前测试项。
-
-不继续自动处理 3DS。
-
-记录：
-
-FAIL
-
-3DS_REQUIRED
-
-保存：
-
-Screenshot
-
-Trace
-
-Log
-
-然后继续下一项。
+删除 Run
 
 ==================================================
-17. Run 必须完全分开
+三十八、运行进度
 ==================================================
 
-每次 START：
-
-产生新的：
+START 后：
 
 Run ID
 
+总任务：
+100
+
+已完成：
+37
+
+剩余：
+63
+
+SUCCESS：
+20
+
+FAIL：
+14
+
+ERROR：
+3
+
+RUNNING：
+1
+
+当前：
+
+Account
+
+Masked Test Data
+
+Network
+
+Step
+
 例如：
+
+FILLING
+
+SUBMITTING
+
+WAITING_RESULT
+
+PROCESSING
+
+每完成一个：
+
+自动下一条。
+
+直到：
+
+Remaining = 0。
+
+==================================================
+三十九、STOP
+==================================================
+
+批量运行中的 STOP 必须继续正常。
+
+例如：
+
+100 条
+
+完成：
+37
+
+正在执行：
+第 38 条
+
+用户 STOP：
+
+前 37 条：
+
+保留结果
+
+第 38 条：
+
+安全停止 / CANCELLED
+
+剩余：
+
+NOT_EXECUTED
+或者现有明确未执行状态
+
+不能：
+
+删除前面已完成结果。
+
+不能：
+
+把未执行的数据全部标记成已使用。
+
+==================================================
+四十、“已使用”不能永久禁止再次测试
+==================================================
+
+测试数据可以记录：
+
+last_used_at
+
+use_count
+
+last_result
+
+但是：
+
+已使用
+
+不能代表：
+
+以后永远不能再次主动测试。
+
+规则：
+
+同一个 Run 中：
+
+同一条测试数据只执行一次。
+
+不同 Run：
+
+如果用户以后主动再次选择：
+
+允许重新测试。
+
+==================================================
+四十一、Run Isolation 继续保留
+==================================================
 
 Run #101
 
 Run #102
 
-Run #103
+必须完全分开。
 
-一次 Run 的：
+每个 Run 保存：
 
-账号
+账号资源快照
 
 测试数据
 
-任务
+节点资源快照
+
+Task Snapshot
 
 Task Version
 
-网络
+Results
 
-结果
-
-日志
-
-截图
-
-Trace
-
-开始时间
-
-结束时间
-
-全部关联到该 Run。
-
-不同 Run 不能混在一起。
-
-运行记录页面：
-
-Run ID
-
-Task
-
-数量
-
-SUCCESS
-
-FAIL
-
-ERROR
-
-时间
-
-耗时
-
-点击某一个 Run：
-
-只显示这一批结果。
-
-==================================================
-18. 导出
-==================================================
-
-导入和导出按钮必须明显。
-
-不能藏起来。
-
-账号页：
-
-[导入]
-
-[导出]
-
-测试数据：
-
-[导入]
-
-[导出安全字段]
-
-Results：
-
-[导出 TXT]
-
-[导出 CSV]
-
-结果导出至少包含：
-
-Run ID
-
-账号
-
-遮罩测试数据
-
-结果
-
-结果代码
-
-时间
-
-耗时
-
-不能导出：
-
-密码
-
-敏感认证字段
-
-==================================================
-19. 删除和数据管理
-==================================================
-
-这是核心功能。
-
-用户不能为了清理数据去 SSH 或 SQLite。
-
-设置中必须有：
-
-数据管理
-
-显示：
-
-账号数量
-
-测试数据数量
-
-Runs 数量
-
-Results 数量
-
-Screenshots 占用
-
-Traces 占用
-
-Logs 占用
-
-Sessions 数量
-
-磁盘占用
-
-提供：
-
-账号：
-
-[删除选中]
-
-[清空]
-
-测试数据：
-
-[删除选中]
-
-[清空]
-
-Run：
-
-[删除选中 Run]
-
-[清理历史 Run]
-
-Artifacts：
-
-[清理 Screenshots]
-
-[清理 Trace]
-
-[清理 Logs]
-
-Session：
-
-[清理失效 Session]
-
-历史数据支持：
-
-7 天以前
-
-30 天以前
-
-全部
-
-危险删除：
-
-必须二次确认。
+Artifacts
 
 删除 Run：
 
@@ -1140,818 +1774,670 @@ Logs
 
 但：
 
-不要删除账号本身。
+不删除账号
+
+不删除测试数据
+
+不删除节点资源。
 
 ==================================================
-20. Screenshot / Trace / Logs
+四十二、Production 边界继续保持
 ==================================================
 
-LIVE 运行必须保存真实调试证据。
+当前 Preply Production：
 
-至少：
+https://preply.com/en/settings/payments
 
-错误 Screenshot
-
-最终结果 Screenshot
-
-Playwright Trace
-
-运行日志
-
-结果详情直接：
-
-[查看截图]
-
-[下载 Trace]
-
-[查看日志]
-
-不要要求用户 SSH 找路径。
-
-日志至少包含：
-
-Run ID
-
-账号
-
-步骤
-
-URL
-
-动作
-
-结果
-
-错误
-
-日志不能记录：
-
-密码
-
-CVC
-
-其他不必要的敏感字段
-
-==================================================
-21. 网络
-==================================================
-
-默认：
-
-Direct
-
-用户也可以添加：
-
-HTTP
-
-SOCKS5
-
-网络设置字段：
-
-名称
-
-协议
-
-Host
-
-Port
-
-Username（可选）
-
-Password（可选）
-
-必须提供：
-
-[测试连接]
-
-显示：
-
-Connected
-
-Latency
-
-或者：
-
-Connection failed
-
-并给出原因。
-
-测试失败的网络：
-
-START 禁止。
-
-正常网络错误可以有限重试。
-
-不要实现：
-
-CAPTCHA
-
-Rate Limit
-
-Login Block
-
-出现以后自动轮换 IP 继续规避限制。
-
-==================================================
-22. 所有需要填写的位置都必须有说明
-==================================================
-
-硬性要求。
-
-任何输入框都必须告诉用户：
-
-名称
-
-用途
-
-是否必填
-
-格式
-
-示例
-
-例如：
-
-SOCKS5 Host
-
-用途：
-测试代理服务器地址
-
-格式：
-IP 或 Domain
-
-示例：
-192.0.2.10
-
-必填：
-是
-
-不要只放一个：
-
-Host [ ]
-
-中文说明必须完整。
-
-可同时支持英文。
-
-==================================================
-23. Task 内部实现
-==================================================
-
-普通用户不管理 Workflow / Selector。
-
-Task 可以内部模块化。
-
-例如：
-
-tasks/
-  preply_ui/
-  local_sandbox_binding/
-
-Task 内部负责：
-
-登录识别
-
-目标页面识别
-
-Add Card
-
-表单定位
-
-Submit
-
-Result parsing
-
-主 Runner 负责：
-
-Browser
-
-Session
-
-Network
-
-状态机
-
-Timeout
-
-Retry
-
-Logs
-
-Screenshot
-
-Trace
-
-STOP
-
-Result persistence
-
-Task 必须有版本号。
-
-Run 保存：
-
-Task ID
-
-Task Version
-
-==================================================
-24. 必须自带本地完整 Sandbox
-==================================================
-
-项目必须自带完全受控的本地测试站点。
-
-建议 Docker Service：
-
-sandbox
-
-内部地址：
-
-http://sandbox:8080
-
-页面：
-
-http://sandbox:8080/login
-
-http://sandbox:8080/settings/payments
-
-包含：
+继续只做：
 
 Login
 
 Payment Methods
 
-Add Card
+Add Card UI Verify
 
-Card Form
+Production：
 
+不要自动提交真实银行卡。
+
+完整：
+
+Fill
 Submit
+Final Result Parse
 
-并能模拟：
+用于明确授权：
+
+Sandbox
+
+QA
+
+Staging
+
+Internal
+
+不要因为批量功能修改：
+
+破坏现有安全边界。
+
+==================================================
+四十三、界面必须有使用说明
+==================================================
+
+不要只靠 README。
+
+首页增加简洁：
+
+“使用说明”
+
+例如：
+
+1. 导入账号
+2. 导入测试数据
+3. 可选：导入节点
+4. 选择 Task
+5. 默认全部可用数据参与
+6. 如需排除，在对应页面取消勾选
+7. 点击 START
+8. 系统自动运行到全部结束
+9. 在运行记录查看 / 导出 / 删除结果
+
+账号页面：
+
+显示导入格式。
+
+测试数据页面：
+
+显示当前 Adapter 支持格式。
+
+节点：
+
+显示 HTTP / SOCKS5 示例。
+
+结果页面：
+
+解释：
+
+SUCCESS
+FAIL
+ERROR
+
+以及常见：
 
 BOUND
-
 DECLINED
-
 3DS_REQUIRED
+UNKNOWN_RESULT
 
-INVALID_DATA
+所有用户输入字段继续保持：
 
-DELAYED_REDIRECT
+用途
 
-TIMEOUT
+格式
 
-Codex 必须用真实 Playwright Chromium执行：
+示例
 
-Login
-
-→ Payment Methods
-
-→ Add Card
-
-→ Fill
-
-→ Submit
-
-→ Result
-
-分别测试：
-
-BOUND
-
-DECLINED
-
-3DS_REQUIRED
-
-INVALID_DATA
-
-Delayed Redirect
-
-不能只做 API Test。
+是否必填
 
 ==================================================
-25. 技术方案
+四十四、批量导出
 ==================================================
 
-优先：
+账号：
 
-简单
+批量导出安全字段
 
-稳定
+不要密码。
 
-容易维护
+测试数据：
 
-建议：
+批量导出安全字段
 
-Frontend：
-Next.js
+不要完整敏感认证信息
 
-Backend：
-FastAPI
+不要 CVC。
 
-Browser：
-Playwright Python
+节点：
 
-Database：
-SQLite
+批量导出安全字段
 
-Migration：
-Alembic
+不要代理密码。
 
-Deployment：
-Docker Compose
+Results：
 
-第一版不要为了架构高级加入：
+TXT
 
-Redis
+CSV
 
-Kafka
+至少包含：
 
-复杂消息队列
+Run ID
 
-微服务
+Account
 
-除非核心功能确实必须。
+Masked Test Data
 
-==================================================
-26. 安装
-==================================================
+Network
 
-新 VPS 应支持一键安装：
+Result
 
-curl -fsSL <installer> | sudo bash
+Result Code
 
-自动完成：
+Reason
 
-检查系统
+Time
 
-安装 Docker
-
-创建目录
-
-创建配置
-
-生成 Secret
-
-数据库初始化
-
-Alembic migration
-
-Docker build
-
-启动
-
-Chromium health
-
-整体 Health Check
-
-安装结束必须明确显示：
-
-Payment Test Runner installed
-
-Frontend        Healthy
-
-Backend         Healthy
-
-Worker          Healthy
-
-Database        Healthy
-
-Chromium        Healthy
-
-Mode            LIVE
-
-Web URL:
-...
+Duration
 
 ==================================================
-27. 更新 / 备份
+四十五、必须增加新的批量自动化测试
 ==================================================
 
-提供：
+这次绝对不能只验证一条。
 
-update.sh
+至少真实测试：
 
-backup.sh
+A.
 
-restore.sh
-
-status.sh
-
-logs.sh
-
-restart.sh
-
-更新必须：
-
-Backup
-
-→ Pull
-
-→ Migration
-
-→ Build
-
-→ Restart
-
-→ Health Check
-
-如果失败：
-
-明确停止并报告。
-
-不要留下半升级状态。
-
-==================================================
-28. Codex 用量控制
-==================================================
-
-用户非常在意 Codex 用量。
-
-不要重复分析已经明确的需求。
-
-不要反复重构已经测试通过的部分。
-
-项目开始时创建：
-
-AGENTS.md
-
-TASK_SPEC.md
-
-TASK_STATE.md
-
-AGENTS.md：
-
-只保存最必要、长期有效的开发规则。
-
-TASK_SPEC.md：
-
-保存本需求基线。
-
-TASK_STATE.md：
-
-保存：
-
-当前 Phase
-
-已完成
-
-已测试
-
-未完成
-
-已知问题
-
-下一步
-
-最后稳定 Commit
-
-开发分阶段完成。
-
-建议：
-
-Phase 1
-项目骨架 / DB / Admin / Health
-
-Phase 2
-账号 Import / Preview / Normalize / Dedup / Delete / Export
-
-Phase 3
-Test Data Import / Normalize / Dedup / Delete
-
-Phase 4
-Task / Preply Target / Custom URL / Local Sandbox
-
-Phase 5
-Playwright Runner / State Machine / Session
-
-Phase 6
-Fill / Submit / Result Parser
-
-Phase 7
-Live Run UI / STOP
-
-Phase 8
-Results / TXT CSV Export
-
-Phase 9
-Screenshot / Trace / Logs
-
-Phase 10
-Data Management
-
-Phase 11
-Network Profiles
-
-Phase 12
-Install / Update / Backup
-
-Phase 13
-Full Acceptance
-
-每完成一个阶段：
-
-运行该阶段必要测试。
-
-通过：
-
-commit。
-
-更新 TASK_STATE.md。
-
-再继续。
-
-不要每改一个小文件都完整 Docker rebuild。
-
-完整 Build / Runtime / E2E：
-
-放在里程碑或最终验收。
-
-==================================================
-29. Codex 用量不足时
-==================================================
-
-如果当前用量或执行资源快不足：
-
-不要草率宣布完成。
-
-先：
-
-完成当前最小完整修改
-
-运行相关测试
-
-Commit
-
-更新 TASK_STATE.md
-
-写清楚：
-
-完成到哪里
-
-哪些测试 PASS
-
-哪些还没有做
-
-下一步是什么
-
-最后稳定 Commit
-
-然后安全暂停。
-
-用户恢复用量后：
-
-读取：
-
-AGENTS.md
-
-TASK_SPEC.md
-
-TASK_STATE.md
-
-检查：
-
-git status
-
-git log
-
-然后：
-
-从上次断点继续。
-
-不要重新从头分析。
-
-不要重新实现已经通过测试的功能。
-
-==================================================
-30. 最终验收
-==================================================
-
-必须 fresh clone 验证。
-
-Backend tests：
-PASS
-
-Frontend lint：
-PASS
-
-Frontend build：
-PASS
-
-Docker build：
-PASS
-
-Docker runtime：
-PASS
-
-Health：
-PASS
-
-Account text import：
-PASS
-
-Whitespace normalization：
-PASS
-
-email|password：
-PASS
-
-email----password：
-PASS
-
-Duplicate detection：
-PASS
-
-Invalid format Preview：
-PASS
-
-Test Data Import：
-PASS
-
-Test Data Dedup：
-PASS
-
-Custom Task Create：
-PASS
-
-Custom URL Edit：
-PASS
-
-Preply Target：
-PASS
-
-Network Test：
-PASS
-
-Real Chromium：
-PASS
-
-Local Sandbox Login：
-PASS
-
-Payment Page：
-PASS
-
-Add Card：
-PASS
-
-Fill：
-PASS
-
-Submit：
-PASS
-
-BOUND：
-PASS
-
-DECLINED：
-PASS
-
-3DS_REQUIRED：
-PASS
-
-INVALID_DATA：
-PASS
-
-Delayed Redirect：
-PASS
-
-Run Isolation：
-PASS
-
-STOP：
-PASS
-
-TXT Export：
-PASS
-
-CSV Export：
-PASS
-
-Delete Selected：
-PASS
-
-Delete Run：
-PASS
-
-Screenshot Cleanup：
-PASS
-
-Trace Cleanup：
-PASS
-
-Restart Persistence：
-PASS
-
-LIVE never falls back to MOCK：
-PASS
-
-没有真正测试的项目：
+1 account
++
+5 test data
++
+Direct
 
 必须：
 
+RunItems = 5
+
+Fill = 5
+
+Submit = 5
+
+Results = 5
+
+B.
+
+1 account
++
+10 test data
+
+必须：
+
+RunItems = 10
+
+Fill = 10
+
+Submit = 10
+
+Results = 10
+
+C.
+
+多个账号
++
+多条 test data
++
+多个节点
+
+必须确认：
+
+每条 selected test data
+
+只执行一次。
+
+不能形成笛卡尔积。
+
+D.
+
+只选部分数据：
+
+例如数据库 100 条，
+手动只选 17 条。
+
+必须：
+
+RunItems = 17。
+
+==================================================
+四十六、必须测试三类资源的选择
+==================================================
+
+Accounts：
+
+Individual Select
+PASS
+
+Multi Select
+PASS
+
+Select All
+PASS
+
+Deselect All
+PASS
+
+Test Data：
+
+Individual Select
+PASS
+
+Multi Select
+PASS
+
+Select All
+PASS
+
+Deselect All
+PASS
+
+Nodes：
+
+Individual Select
+PASS
+
+Multi Select
+PASS
+
+Select All
+PASS
+
+Deselect All
+PASS
+
+不能只测试：
+
+“页面上有 checkbox”。
+
+必须真正确认：
+
+START 使用的是选择后的数据。
+
+==================================================
+四十七、必须增加提交后状态回归测试
+==================================================
+
+Local Sandbox 必须增加或完善以下真实 Chromium 场景：
+
+Immediate Success
+
+Spinner → Success
+
+Spinner → Declined
+
+Spinner → 3DS_REQUIRED
+
+Redirect → Success
+
+Multiple Redirect → Success
+
+Delayed Redirect → Success
+
+No Result → UNKNOWN_RESULT
+
+必须确认：
+
+程序没有在中间状态提前结束。
+
+==================================================
+四十八、空白 Screenshot 回归测试
+==================================================
+
+这是以前真实发生过的问题。
+
+增加明确测试：
+
+Blank Screenshot Regression
+
+测试场景：
+
+Submit
+→ Redirect
+→ Intermediate blank/loading page
+→ Final result
+
+最终保存的 Screenshot：
+
+必须是：
+
+最终可见结果页面
+
+而不是：
+
+Redirect 中间的空白页。
+
+如果截图仍然空白：
+
+测试 FAIL。
+
+==================================================
+四十九、Navigation transient 回归测试
+==================================================
+
+专门验证：
+
+Execution context was destroyed because of navigation
+
+出现在正常页面跳转期间时：
+
+不会马上 PAGE_ERROR。
+
+必须：
+
+继续等待
+
+重新检测
+
+最终识别真实结果。
+
+验收：
+
+Navigation Regression
+PASS / FAIL
+
+==================================================
+五十、批量执行时每张数据必须等最终状态
+==================================================
+
+专门测试：
+
+5 条测试数据连续运行。
+
+必须证明：
+
+Card 1 Final Result
+→ Card 2 Start
+
+Card 2 Final Result
+→ Card 3 Start
+
+不能：
+
+Card 1 Submit
+→ Card 2 已经 Fill
+→ Card 1 Result 还没回来
+
+禁止这种结果错位。
+
+==================================================
+五十一、不要为了这次修改重构整个项目
+==================================================
+
+本次重点只在：
+
+批量资源管理
+
+默认全自动执行
+
+账号 / 测试数据 / 节点选择
+
+批量节点导入导出
+
+执行队列
+
+提交后的 Final Result 等待
+
+结果证据正确时间点
+
+UI 使用说明
+
+已经 PASS 的：
+
+Browser
+Session
+Result Parser
+STOP
+Run Isolation
+Evidence
+Cleanup
+LIVE only
+
+尽量复用。
+
+==================================================
+五十二、文档必须同步
+==================================================
+
+修改：
+
+README.md
+
+TASK_SPEC.md
+
+TASK_STATE.md
+
+ACCEPTANCE.md
+
+删除现有文档中的错误描述：
+
+“1 个账号对应 1 条测试数据”
+
+以及任何：
+
+账号数量决定最多执行数量
+
+的旧规则。
+
+新文档必须明确：
+
+本次执行数量 = selected test data count
+
+账号和节点是可复用资源。
+
+==================================================
+五十三、完成以后不要只告诉我“已完成”
+==================================================
+
+最终必须给真实验收数字。
+
+按照下面格式回复：
+
+Version:
+
+Commit:
+
+Account batch import/export:
+PASS / FAIL
+
+Test Data batch import/export:
+PASS / FAIL
+
+Node batch import/export:
+PASS / FAIL
+
+Account individual/multi/select-all/deselect-all:
+PASS / FAIL
+
+Test Data individual/multi/select-all/deselect-all:
+PASS / FAIL
+
+Node individual/multi/select-all/deselect-all:
+PASS / FAIL
+
+Default imported resources auto-selected:
+PASS / FAIL
+
+1 account + 5 test data:
+RunItems =
+Login count =
+Fill count =
+Submit count =
+Results =
+
+1 account + 10 test data:
+RunItems =
+Login count =
+Fill count =
+Submit count =
+Results =
+
+Multiple accounts + multiple test data + multiple nodes:
+Selected Test Data =
+RunItems =
+Duplicate Test Data Execution = YES / NO
+
+Custom partial selection:
+Selected =
+RunItems =
+
+Session reuse:
+PASS / FAIL
+
+Immediate Success:
+PASS / FAIL
+
+Spinner → Success:
+PASS / FAIL
+
+Spinner → Declined:
+PASS / FAIL
+
+Spinner → 3DS:
+PASS / FAIL
+
+Redirect → Success:
+PASS / FAIL
+
+Multiple Redirect → Success:
+PASS / FAIL
+
+Unknown Result Timeout:
+PASS / FAIL
+
+Blank Screenshot Regression:
+PASS / FAIL
+
+Navigation Transient Regression:
+PASS / FAIL
+
+Final result log:
+PASS / FAIL
+
+Batch STOP:
+PASS / FAIL
+
+Run Isolation:
+PASS / FAIL
+
+TXT / CSV Export:
+PASS / FAIL
+
+Backend tests:
+实际数量 / PASS / FAIL
+
+Frontend lint:
+PASS / FAIL
+
+Frontend build:
+PASS / FAIL
+
+Real Chromium E2E:
+PASS / FAIL
+
+Docker:
+PASS / FAIL / NOT TESTED
+
+VPS:
+PASS / FAIL / NOT TESTED
+
+NOT TESTED:
+逐项列出
+
+Known Limitations:
+逐项列出
+
+==================================================
+五十四、验收纪律
+==================================================
+
+没有真实测试：
+
+必须写：
+
 NOT TESTED
 
-不能为了交付写 PASS。
+不能写：
+
+PASS
+
+不能因为：
+
+代码看起来正确
+
+就写 PASS。
+
+不能通过：
+
+Mock
+
+直接 API 修改结果
+
+直接数据库写结果
+
+跳过真实 Fill / Submit
+
+来冒充浏览器测试。
+
+需要 Browser E2E 的项目：
+
+必须真实 Playwright Chromium。
 
 ==================================================
-31. 最终交付
+五十五、最终产品原则
 ==================================================
 
-最后只需要输出清晰报告：
+最终用户体验必须保持：
 
-Version
+导入
+→ START
+→ 自动跑完
+→ 看结果
 
-Commit
+需要精确控制：
 
-安装命令
+勾选想使用的：
 
-Web 地址
+账号
 
-管理员初始化方法
+测试数据
 
-已完成功能
+节点
 
-测试结果
+→ START
 
-Backend
+→ 仍然自动跑完
 
-Frontend
+不要再增加：
 
-Docker
+一个账号跑几张
 
-Chromium
+一个节点跑几个
 
-Local Sandbox E2E
+1:1 配对
 
-Import / Dedup
+手工逐条 Mapping
 
-Export
+半自动
 
-Delete / Cleanup
+复杂 Workflow
 
-已知限制
+复杂 Scheduler
 
-NOT TESTED
-
-不要输出大量重复开发过程。
-
-==================================================
-32. 最终产品原则
-==================================================
-
-这个工具本来就应该简单。
+复杂 Selector UI
 
 最重要：
 
-稳定
+批量导入后能直接自动执行全部待测试数据。
 
-操作简单
+并且：
 
-文本直接导入
+每一条测试数据 Submit 后，
+必须真正等到页面最终结果出现，
+再给出结果和 Screenshot。
 
-自动整理格式
+绝对不能：
 
-自动去重
+刚 Submit
+→ 页面还在转圈 / 跳转
+→ 就提前给结果。
 
-错误行能看出来
-
-测试地址用户自己能添加修改
-
-真实 Chromium 执行
-
-授权测试环境真正 Fill + Submit + Result
-
-结果清楚
-
-每次 Run 数据分开
-
-TXT / CSV 直接导出
-
-没用的数据直接删除
-
-方便管理
-
-发生问题直接看到：
-
-原因
-Screenshot
-Trace
-Log
-
-不要做成复杂 QA 平台。
-
-如果实现方案有多种：
-
-优先选择：
-
-最简单
-
-最稳定
-
-最少配置
-
-最容易使用
-
-最容易维护
-
-不要自行增加会改变产品核心使用方式的功能。
+这两个目标是本次修改的最高优先级。

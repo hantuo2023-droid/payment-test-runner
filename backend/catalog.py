@@ -33,11 +33,11 @@ def export_file(data, fields, filename, fmt='csv'):
 
 @router.get('/accounts')
 def accounts():
-    return rows("SELECT a.id,email,status,last_result,created_at,COALESCE((SELECT CASE WHEN COUNT(*)=SUM(state='VALID') THEN 'VALID' ELSE 'EXPIRED' END FROM sessions WHERE account_id=a.id HAVING COUNT(*)>0),'NONE') AS session FROM accounts a ORDER BY a.id DESC")
+    return rows("SELECT a.id,email,status,last_result,created_at,selected,COALESCE((SELECT CASE WHEN COUNT(*)=SUM(state='VALID') THEN 'VALID' ELSE 'EXPIRED' END FROM sessions WHERE account_id=a.id HAVING COUNT(*)>0),'NONE') AS session FROM accounts a ORDER BY a.id DESC")
 
 @router.get('/cards')
 def cards():
-    return rows('SELECT id,masked,used,created_at FROM cards ORDER BY id DESC')
+    return rows('SELECT id,masked,used,created_at,selected,use_count,last_used_at,last_result FROM cards ORDER BY id DESC')
 
 @router.get('/accounts/export')
 def account_export():
@@ -52,8 +52,34 @@ class Selection(BaseModel):
     all: bool = False
     confirmed: bool = False
 
+class PoolSelection(BaseModel):
+    ids: list[int] = Field(default_factory=list,max_length=10000)
+    selected: bool
+    all: bool = False
+
+@router.post('/pools/{kind}/selection')
+def select_resources(kind: str, body: PoolSelection):
+    if kind not in ('accounts','cards','networks'): raise HTTPException(404)
+    with connect() as db:
+        if body.all: db.execute(f'UPDATE {kind} SET selected=?',(body.selected,))
+        else: db.executemany(f'UPDATE {kind} SET selected=? WHERE id=?',[(body.selected,i) for i in body.ids])
+    return {'ok':True}
+
+@router.post('/networks/delete')
+def delete_networks(body: Selection):
+    result = delete_data('networks',body)
+    # Direct always remains available as a selectable fallback, never silently used
+    # when proxies are explicitly selected for a run.
+    if not rows("SELECT id FROM networks WHERE protocol='Direct'"):
+        execute("INSERT INTO networks(name,protocol,selected) VALUES('Direct','Direct',1)")
+    return result
+
+@router.get('/networks/export')
+def network_export():
+    return export_file(networks(),['name','protocol','host','port','username','status','latency_ms'],'networks-safe')
+
 def delete_data(kind: str, body: Selection):
-    if kind not in ('accounts','cards'):
+    if kind not in ('accounts','cards','networks'):
         raise HTTPException(404,'类型不存在')
     busy()
     if not body.confirmed:
@@ -78,6 +104,7 @@ def clear_session(account_id: int):
     busy()
     get_row('accounts',account_id)
     execute('DELETE FROM sessions WHERE account_id=?',(account_id,))
+    execute("UPDATE accounts SET status='READY' WHERE id=?",(account_id,))
     return {'ok':True}
 
 def valid_url(value):
@@ -111,7 +138,8 @@ def validate_task(body):
             raise ValueError('Preply 真实站点必须使用 Production UI 验证')
     except ValueError as exc:
         raise HTTPException(400,str(exc))
-    return 'preply_ui' if preply else 'generic_ui' if body.environment == 'Production' else 'sandbox'
+    local = urls[0].hostname in ('127.0.0.1','localhost','sandbox')
+    return 'preply_ui' if preply else 'generic_ui' if body.environment == 'Production' else 'sandbox' if local else 'contract_binding'
 
 @router.get('/tasks')
 def tasks():
@@ -145,7 +173,7 @@ class Network(BaseModel):
 
 @router.get('/networks')
 def networks():
-    return rows('SELECT id,name,protocol,host,port,username FROM networks ORDER BY id')
+    return rows('SELECT id,name,protocol,host,port,username,selected,status,latency_ms,checked_at,reason FROM networks ORDER BY id')
 
 @router.post('/networks')
 def create_network(body: Network):
@@ -153,5 +181,9 @@ def create_network(body: Network):
         raise HTTPException(400,'协议需为 HTTP/SOCKS5，Host 需为 IP 或域名')
     if body.protocol == 'SOCKS5' and (body.username or body.password):
         raise HTTPException(400,'Chromium 不支持 SOCKS5 用户名密码认证；请选择 HTTP 或无认证 SOCKS5')
+    from backend.network_import import network_key
+    duplicate=next((r for r in rows('SELECT * FROM networks') if network_key(r)==network_key(body.model_dump())),None)
+    if duplicate: return {'id':duplicate['id'],'duplicate':True}
+    if body.password and body.password in body.name: body.name=f'{body.host}:{body.port}'
     item_id = execute('INSERT INTO networks(name,protocol,host,port,username,secret) VALUES(?,?,?,?,?,?)',(body.name,body.protocol,body.host,body.port,body.username,seal(body.password)))
     return {'id':item_id}
