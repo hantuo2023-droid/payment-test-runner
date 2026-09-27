@@ -21,7 +21,10 @@
 - 坏账号继续、失败节点排除、NO_AVAILABLE_NETWORK、提交后 HTTP 429 不切换节点 PASS。
 
 ## 当前收尾
-- 正在整理 ACCEPTANCE.md、正式本机预览和发布提交。
+- 实现里程碑 6b2bb16；ACCEPTANCE.md 和 README.md 已同步。
+- 正式本机 data 已备份至 backups/before-v02-* 后升级；三个服务已启动，http://127.0.0.1:3000 健康检查通过，版本 0.2.0。
+- 正式库账号/测试数据/Run 均为空，管理员尚未初始化；按 README 运行 backend.cli init-admin 后登录。
+- 服务进程记录 data/local-services.json，日志 data/*.log。
 - GitHub：用户授权 private 仓库 payment-test-runner。尚无 remote；浏览器正在用户登录流程，不能声称上传成功。
 
 ## 限制 / NOT TESTED

@@ -1,73 +1,93 @@
-# 0.1.0 本地验收报告
+# Payment Test Runner 0.2.0 验收报告
 
-日期：2026-09-27。通过测试的实现版本：`37406b1`。后续文档提交不改变实现。
+日期：2026-09-28。通过验证的实现提交：`6b2bb16`。基于已验证 0.1.0 增量修改，无重写核心模块。
 
-**本地核心流程已通过验证，尚未完成全部部署与真实站点验收。**
+## 实际执行计数
 
-## 环境与方法
+所有业务结果来自真实 Playwright Chromium 的 Fill / Submit / 页面解析；未用 API 或数据库写入成功结果代替浏览器执行。数据使用本地合成 fixtures；100 条测试记录通过不同的有效期生成独立记录。
 
-Windows；Python 3.12；Node 24.19.0；pnpm 11.19.0；Next 16.3.6；React 19.3.0；Playwright Python 1.63.0；真实 Chromium 153.0.8010.12。
+| 场景 | 选择数据 | RunItems | 实际登录 | Fill | Submit | Results | Browser launches |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 account + 5 test data + Direct | 5 | 5 | 1 | 5 | 5 | 5 | 1 |
+| 1 account + 10 test data + Direct | 10 | 10 | 1 | 10 | 10 | 10 | 1 |
+| 3 accounts + 12 test data + 2 HTTP nodes | 12 | 12 | — | 12 | 12 | 12 | — |
+| 100 条新增记录，选择其中 17 条 | 17 | 17 | — | 17 | 17 | 17 | — |
 
-独立克隆目录 `test-output/fresh-clone`：前端重新按锁文件安装，Python 与浏览器二进制复用已安装依赖，数据库和测试文件独立创建。初次完整验收版本 `8437c05`；最终 STOP/导航修改更新至 `c84cbf1` 并重跑后端和 Chromium 测试，其后 CSV 严格解析修复更新至 `37406b1` 并在独立克隆重跑 9 个后端测试；这两次修改均不涉及前端。
+多资源场景：Duplicate Test Data Execution = **NO**。两个真实本机 HTTP 代理各转发 6 次提交；每条结果的账号/节点来自选定池。表中“—”表示该项没有作为计数验收指标。
 
-## 测试结果
+## 功能结果
 
-| 项目 | 结果 | 范围 |
+| 验收项 | 结果 | 实际范围 / 证据 |
 |---|---|---|
-| Backend tests | PASS | 9 pytest，独立克隆 |
-| Frontend install / lint / build | PASS | frozen-lockfile 安装；lint 无警告；生产构建成功 |
-| 本机 Runtime / Health | PASS | Backend、Database、Worker、Disk；前端 HTTP 200 |
-| Compose YAML 语法 | PASS | 仅语法解析，不等同于 Docker 验收 |
-| Docker build / runtime | NOT TESTED | 当前机器没有 Docker |
-| VPS 一键安装 / Linux 脚本运行 | NOT TESTED | 未提供 Linux Docker 主机 |
-| 更新回滚 / 备份恢复 | NOT TESTED | 脚本已实现，尚未实机验收 |
-| Account text import | PASS | API 和真实前端浏览器 |
-| Whitespace normalization | PASS | 空白、空行、规范格式 |
-| email\|password / email----password | PASS | 两种分隔符 |
-| CSV account import | PASS | 标题、引号、含逗号密码 |
-| Duplicate detection | PASS | 批内重复、重复提交预览令牌 |
-| Invalid format Preview | PASS | 行号和原因，确认前不写账号库 |
-| Test Data Import / Dedup | PASS | 合成卡、有效期和字段检查 |
-| Custom Task Create / URL Edit | PASS | 新增、修改、版本递增，非法 URL 拒绝 |
-| Preply Target 配置 | PASS | 固定目标地址，Production UI-only |
-| 真实 Preply 登录 / UI | NOT TESTED | 没有真实账号，不能从本地测试推断适配成功 |
-| Network Direct | PASS | 真实 Chromium 访问本地目标 |
-| 失败网络阻止 START | PASS | 失效 HTTP 代理连接，缺少有效 proof 拒绝启动 |
-| 外部 HTTP / SOCKS5 成功连接 | NOT TESTED | 未提供可用代理 |
-| Real Chromium | PASS | 所有 E2E 使用真实浏览器 |
-| Local Sandbox Login / Payment Page / Add Card | PASS | 真实输入和点击 |
-| Fill / Submit / Result | PASS | 日志包含 FILLING、SUBMITTING、WAITING_RESULT |
-| BOUND | PASS | SUCCESS / BOUND |
-| DECLINED | PASS | FAIL / DECLINED |
-| 3DS_REQUIRED | PASS | FAIL；不继续验证，继续下一项 |
-| INVALID_DATA | PASS | FAIL / INVALID_DATA |
-| Delayed Redirect | PASS | 初始 700ms 跳转，登录后 1.5s 跳转 |
-| TIMEOUT / UNKNOWN_RESULT | PASS | 未检测到结果时 ERROR / UNKNOWN_RESULT |
-| BAD_CREDENTIALS / LOGIN_TIMEOUT | PASS | 分别正确识别 |
-| Session 复用 / 失效重登 | PASS | 有效 Session 跳过认证，无效 cookie 自动重新认证 |
-| Production UI 不提交 | PASS | 本地 Production 任务 UI_VERIFIED，无 FILLING/SUBMITTING |
-| Run Isolation | PASS | 后续运行、删除不影响先前 Run |
-| STOP | PASS | 当前项 CANCELLED，排队项 NOT_EXECUTED，已完成结果保留 |
-| TXT / CSV Export | PASS | 密码、完整卡号不出现 |
-| UI CSV Download | PASS | 浏览器触发并保存文件 |
-| Delete Selected | PASS | 账号选择删除；缺少确认被拒绝 |
-| Delete Run | PASS | 删除结果和文件，保留账号 |
-| Screenshot / Trace / Logs | PASS | 六种结果有真实截图、可读取 Trace ZIP、步骤日志 |
-| Screenshot / Trace / Log Cleanup | PASS | API 清理选定时间范围 |
-| Restart Persistence | PASS（有限范围） | SQLite 重初始化保留数据；worker 重启标记 INTERRUPTED；未测 Docker 重启 |
-| LIVE never falls back to MOCK | PASS | 无运行时 Mock；失败及未知结果保留 ERROR |
-| 六菜单 / 实时结果 | PASS | 真实 UI 点击，无 pageerror |
-| 桌面 / 平板截图 | PASS | 截图生成，桌面首页和结果布局已人工查看 |
+| Account batch import / export | PASS | 两种文本分隔符、CSV、规范化、去重、错误预览和安全字段导出 |
+| Test Data batch import / export | PASS | 文本/CSV、去重、遮罩；通用导入接受五 fixtures 以外的官方测试数据；Local Adapter 单独限制 |
+| Node batch import / export | PASS | HTTP/SOCKS5 URL、六列 CSV、去重、安全预览/导出；不支持的 SOCKS5 认证提前拒绝 |
+| Accounts individual / multi / select-all / deselect-all | PASS | 真实前端点击、持久化检查、START 实际账号 ID 核对 |
+| Test Data individual / multi / select-all / deselect-all | PASS | 真实前端点击、START 结果 ID 集合与所选数据完全一致 |
+| Nodes individual / multi / select-all / deselect-all | PASS | 真实前端点击、实际节点来自选择；取消全部阻止 START |
+| Imported resources default selected | PASS | 三池导入后直接自动检查；真实 UI 默认 START 生成 3 条，单选生成 1 条，多选生成 2 条 |
+| Session / Browser Context reuse | PASS | 1+5、1+10 各只登录一次、启动一个浏览器；失效 cookie 自动重新登录 |
+| Used test data reselect | PASS | 主动重选在新 Run 再次执行，use_count 递增到 2 |
+| Immediate Success | PASS | 可见 BOUND 后才保存结果 |
+| Spinner → Success | PASS | 等待 processing 结束并识别 BOUND |
+| Spinner → Declined | PASS | FAIL / DECLINED |
+| Spinner → 3DS | PASS | FAIL / 3DS_REQUIRED |
+| Redirect → Success | PASS | 经空白过渡页面后最终 BOUND |
+| Multiple Redirect → Success | PASS | 两次过渡跳转后最终 BOUND |
+| Delayed Redirect → Success | PASS | 1.3 秒空白过渡后最终 BOUND |
+| Visible 3DS iframe | PASS | 验证 iframe 已加载、可见，保存完整页面验证证据；不完成验证 |
+| Unknown Result Timeout | PASS | 实际等待完整超时，ERROR / UNKNOWN_RESULT，记录明确 reason |
+| Blank Screenshot Regression | PASS | 用 Pillow 读取保存 PNG，检查最终页面特定颜色区域 > 10,000 像素；不是仅检查文件存在 |
+| Navigation Transient Regression | PASS | 真实导航销毁尚未结束的 execution context；等待器恢复并识别真实 BOUND，日志记录 transient |
+| Final result log | PASS | FINAL_STATE_DETECTED 时间早于 EVIDENCE_SAVED；RESULT 包含分类与原因 |
+| Sequential final-before-next | PASS | 5 / 10 / 12 / 17 条逐项检查上一项结束时间不晚于下一项开始时间 |
+| Batch STOP | PASS | 至少 2 项完成后在 processing 中停止；已完成保留、当前取消、排队 NOT_EXECUTED，未开始数据 use_count=0 |
+| Bad account isolation | PASS | BAD_CREDENTIALS 后移除坏账号，其他账号继续；全部不可用时 NO_AVAILABLE_ACCOUNT |
+| Bad node isolation | PASS | preflight 失败节点排除；运行期间节点失效后继续使用剩余所选节点 |
+| NO_AVAILABLE_NETWORK | PASS | 最后一节点真实断开，首项 NETWORK_ERROR，其余明确未执行 |
+| HTTP 429 after Submit | PASS | 真实代理返回 429；记录 ACCESS_BLOCKED，后续项目停止，未在另一节点提交 |
+| Run Isolation | PASS | 独立快照、结果和文件；后续 Run / 删除不改变已有 Run |
+| TXT / CSV Export | PASS | 实际账号、节点、Task 版本、原因、最终 URL 和时间；不含密码、完整卡号 |
+| Production UI boundary | PASS | 受控本地 Production 任务只打开 Add Card，UI_VERIFIED；无 FILLING / SUBMITTING |
+| Core 0.1 regression | PASS | BOUND / DECLINED / 3DS_REQUIRED / INVALID_DATA / UNKNOWN_RESULT / BAD_CREDENTIALS / LOGIN_TIMEOUT、Session、证据、删除、STOP |
+| UI filters / six menus / download | PASS | 真实账号与节点筛选、下载 CSV、六菜单；pageerror 数量 0 |
+| Backend tests | PASS | **13 pytest**，包括 001 → 002 带数据迁移和密文保留 |
+| Frontend lint | PASS | ESLint 退出码 0 |
+| Frontend build | PASS | Next.js 生产构建成功 |
+| Real Chromium E2E | PASS | e2e_live、e2e_pools、e2e_faults、e2e_ui 四套实际运行 |
+| Local 0.2 runtime health | PASS | 3000 前端/代理、8000 Backend、8080 Sandbox HTTP 200；版本 0.2.0、DB/Worker/Disk 正常 |
+| Docker | NOT TESTED | 当前机器无 Docker |
+| VPS | NOT TESTED | 未提供 Linux Docker 主机 |
 
-## 证据与限制
+## 环境与复现
 
-- [Chromium 验收输出](docs/acceptance-live.json)
-- [首页截图](docs/screenshots/home.png)
-- [结果与实时日志截图](docs/screenshots/results.png)
-- 可重跑测试：`backend/tests/e2e_live.py`、`backend/tests/e2e_ui.py`。
-- 自定义绑定站点必须满足 README 中的页面协议；跨域支付 iframe 和其他登录流程需专用 Task 适配器。
-- 当前只接受五种合成测试卡，不接收真实银行卡。
-- Trace 脱敏填写值，关闭 DOM/网络快照，诊断信息少于完整未脱敏 Trace。
-- 第一版为单管理员、单 backend worker、串行执行。
-- TestClient 有一条 httpx 弃用警告，9 个测试全部通过。
-- 没有远端仓库或公开安装器地址，尚不能给出已发布的 curl 安装 URL。
+Windows，Python 3.12，Node 24.19.0，Next 16.3.6，React 19.3.0，Playwright Python 1.63.0，真实 Chromium 153.0.8010.12。测试使用独立数据目录和不同 Sandbox 端口，不污染正式 data。此次无全新依赖重装，使用现有锁文件和已安装依赖。
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest backend/tests -q -p no:cacheprovider
+$env:PLAYWRIGHT_BROWSERS_PATH="$PWD\test-output\browsers"
+.\.venv\Scripts\python.exe -m backend.tests.e2e_live
+.\.venv\Scripts\python.exe -m backend.tests.e2e_pools
+.\.venv\Scripts\python.exe -m backend.tests.e2e_faults
+.\.venv\Scripts\python.exe -m backend.tests.e2e_ui
+cd frontend
+pnpm lint
+pnpm build
+```
+
+保存的汇总：[资源池和终态回归](docs/acceptance-pools.json)、[真实界面测试](docs/acceptance-ui.json)、[资源失效及 429](docs/acceptance-faults.json)、[原有核心回归](docs/acceptance-live.json)。
+
+界面证据：[首页](docs/screenshots/home.png)、[结果](docs/screenshots/results.png)、[平板](docs/screenshots/tablet.png)。原始截图/Trace/日志在 test-output 的独立目录，未上传敏感运行目录。正式本机数据库已在 backups/before-v02-* 中备份后升级，备份未进入 Git。
+
+## NOT TESTED / Known Limitations
+
+- Docker build/runtime、VPS 安装、Linux 脚本实跑、容器重启、部署升级回滚与备份恢复未测。迁移单元测试和本机升级不代表这些部署项目通过。
+- 真实 Preply 登录/UI 未测，未提供账号。Production 边界在受控本地站点验证。
+- 外部 HTTP、SOCKS5 连通和认证代理未测；本机无认证 HTTP 代理真实转发已验证。
+- 任意自定义授权站点绑定未测，需要内部 Adapter 符合该环境页面协议及官方测试数据。导入格式通过不等于任意站点适配成功。
+- 非 Production 同源请求边界保留；跨域支付 iframe 需要专用适配器。不完成 3DS、OTP 或 CAPTCHA。
+- 单管理员、单 worker、串行执行。有效旧 Session 可以恢复；不自动恢复可能已提交的中断项目。
+- Trace 脱敏并关闭网络/DOM 快照，诊断信息少于完整 Trace。截图保留验证 iframe 的可见内容，并遮罩所有输入框。
+- TestClient 有一条 httpx 弃用提示；13 项测试通过。
+- 本机管理员尚未初始化，按 README 初始化后使用自己的密码登录。
+- GitHub private 仓库上传待用户完成登录；尚未创建远端或推送，未声称发布成功。

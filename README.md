@@ -1,6 +1,6 @@
-# Payment Test Runner · 0.1.0
+# Payment Test Runner · 0.2.0
 
-简单的自托管浏览器测试工作台：导入账号 → 导入合成测试数据 → 选择任务和网络 → 准备检查 → START → 查看结果、截图、Trace 和日志。
+简单的自托管浏览器测试工作台：导入账号、测试数据和可选节点 → 选择任务 → START → 查看结果、截图、Trace 和日志。
 
 **运行模式只有 LIVE。** 使用 Playwright Python 和真实 Chromium，不提供运行时 Mock，也不会将未知结果当作成功。
 
@@ -79,9 +79,37 @@ CSV 支持 `email,password` 标题行和 CSV 引号。导入清理空白、忽�
 | 4000000000000069 | FAIL / INVALID_DATA |
 | 4000000000009995 | 不返回结果，最终 ERROR / UNKNOWN_RESULT |
 
-示例：`4242424242424242|12|2035|123`。**当前版本只接受以上五个合成卡号，不接收真实银行卡。** 去重依据卡号、月份、年份，不依据 CVC。导入后先预览，再确认保存。
+示例：`4242424242424242|12|2035|123`。**以上五种限制仅用于 Local Sandbox fixture。** 通用导入层接受符合格式的官方测试数据；明确授权的 Sandbox / QA / Staging / Internal 任务由内部 Adapter 检查和填写。不用于第三方 Production 真实银行卡验证。 去重依据卡号、月份、年份，不依据 CVC。导入后先预览，再确认保存。
 
-1 个账号对应 1 条测试数据；不足时 START 禁用并显示最多可执行数量。开始执行的数据立即标为已使用，防止进程崩溃后再次意外提交。未开始的项目停止后记 CANCELLED，数据仍未使用。
+## 三个资源池与自动执行
+
+账号、测试数据、节点导入成功后默认勾选。列表复选框直接决定是否参加下一次 Run；支持单选、任意多选、全选、取消全选、搜索、导出安全字段、删除和清空。无需“标记已选”或逐条配对。
+
+Card Binding 的 `RunItems = selected_test_data_count`。1 个账号 + 10 条数据生成 10 条任务和独立结果；账号和节点按 ID 升序循环复用，不产生笛卡尔积。首页自动进行真实 Chromium 准备检查，条件满足后可直接 START；失败会列出原因。默认没有代理时使用 Direct；不会悄悄以 Direct 替代用户只选的代理。
+
+同一账号与节点连续执行复用当前 Browser Context；换账号或节点时使用加密 Session。每条数据先完成填写、提交、等待明确终态、保存证据和结果，再执行下一条。账号出现 BAD_CREDENTIALS / LOGIN_TIMEOUT 后在当前 Run 排除；连接错误节点同样排除，有剩余可用资源时继续。资源耗尽时剩余项目明确标记 NO_AVAILABLE_ACCOUNT / NO_AVAILABLE_NETWORK，保留未执行数据。
+
+开始执行的数据记录 used、use_count、last_used_at、last_result，并取消默认勾选；排队未执行数据不消耗。已使用的数据可主动重新勾选，在新的 Run 再次测试。同一 Run 由唯一索引保证每条数据只创建一个项目。
+
+### 节点批量管理
+
+在“设置 → 节点池”导入文本、TXT 或 CSV：
+
+```text
+http://host:port
+http://username:password@host:port
+socks5://host:port
+```
+
+CSV 标题：`name,protocol,host,port,username,password`。按协议、Host、端口、用户名去重；密码加密，预览错误不回显凭据。Chromium 不支持 SOCKS5 用户名密码认证，导入预览即拒绝并解释。
+
+新节点默认选中，START 前检查所选节点访问当前 Task 的能力。CONNECTED 才进入 Run 快照，FAILED 保留在列表但排除；可“批量 Test Connection”重测，列表显示状态、延迟和原因。延迟包含 Chromium 启动和目标访问时间。403 / 429 / CAPTCHA 等限制终止本次受影响运行，不换 IP 重试。
+
+### 终态与证据
+
+Submit 后持续观察 PROCESSING / WAITING_RESULT。加载、空白页、跳转和正常导航引起的 execution-context 销毁均继续等待。只有可见 Adapter 终态稳定后才记录 FINAL_STATE_DETECTED；随后生成完整页面截图、脱敏 Trace 和日志。3DS iframe 必须加载且可见，结果为 FAIL / 3DS_REQUIRED，不完成验证。真实超时才是 ERROR / UNKNOWN_RESULT。
+
+每条结果保存实际账号、测试数据和节点 ID、Task 版本、原因、最终 URL、起止时间与耗时。运行记录可按 Run、结果状态、账号、节点和日期筛选，导出 TXT / CSV。STOP 关闭当前浏览器，保留已完成结果，将当前及未开始项目明确标记。
 
 ## 任务与适配边界
 
@@ -103,7 +131,7 @@ CSV 支持 `email,password` 标题行和 CSV 引号。导入清理空白、忽�
 | 提交 | 可访问名称严格为 `Submit` 的按钮 |
 | 结果 | 可见元素的 `data-result` 为 `BOUND` / `DECLINED` / `3DS_REQUIRED` / `INVALID_DATA` |
 
-特殊页面、跨域支付 iframe、不同登录形式需要在 `backend/tasks` 中增加专用适配器并进行真实浏览器验收。普通用户无需配置支付商、Selector 或 Workflow。未检测到明确结果一律 UNKNOWN_RESULT；检测到 3DS 立即停止该项目并继续下一项，不自动完成验证。
+特殊页面、跨域支付 iframe、不同登录形式需要在 `backend/tasks` 中增加专用适配器并进行真实浏览器验收。普通用户无需配置支付商、Selector 或 Workflow。未检测到明确结果一律 UNKNOWN_RESULT；检测到已加载且可见的 3DS 后保存验证页面证据，再结束该项目并继续下一项，不自动完成验证。
 
 ## Session、日志与数据保护
 
@@ -111,12 +139,12 @@ CSV 支持 `email,password` 标题行和 CSV 引号。导入清理空白、忽�
 - 加密 Secret 从 `PTR_SECRET` 获取；本机开发无环境配置时生成 `data/secret.key`。备份必须同时保存数据库和 Secret；丢失 Secret 将无法解密。
 - Session 按账号 + 任务 + 版本隔离。有效 Session 优先复用，登录重定向后自动重新登录；修改任务令已有 Session 失效。
 - 账号和结果导出不含密码；测试数据只导出安全字段。CSV 对公式前缀进行转义。
-- 截图遮罩输入框、文本域和 iframe。Trace 保存真实浏览器动作但关闭网络/DOM 快照、自动截图和源码；保存前移除填写值、认证字段和秘密文本。诊断细节少于完整未脱敏 Trace，这是有意的保护措施。
+- 完整页面截图遮罩主页面及所有 iframe 内的输入框和文本域，保留可见的验证提示。Trace 保存真实浏览器动作但关闭网络/DOM 快照、自动截图和源码；保存前移除填写值、认证字段和秘密文本。诊断细节少于完整未脱敏 Trace，这是有意的保护措施。
 - 浏览器异常只保存归类错误，不直接记录可能含密码的 Playwright 原始异常。导航 URL 去掉查询字符串与片段。
 - 普通错误不会切换 Mock；程序重启时将中断项目记为 INTERRUPTED，避免自动重复可能已提交的测试。
-- 准备检查使用当前任务和网络真正启动 Chromium 并访问目标。凭证有效 120 秒，配置或选择变化后必须重新检查。
+- 准备检查使用当前任务和网络真正启动 Chromium 并访问目标。凭证有效 120 秒，配置或选择变化后界面自动重新检查；START 验证同一份资源签名。
 - SOCKS5 仅支持无认证，这是 Chromium 的限制；需要账号密码的代理请用 HTTP。
-- 不绕过 CAPTCHA、限流、登录限制；不自动轮换代理。HTTP 403/429 会停止该项目。
+- 不绕过 CAPTCHA、限流、登录限制；不因这些限制更换节点。HTTP 403/429 会记录 ACCESS_BLOCKED 并停止本次 Run 的后续项目。
 
 ## 维护
 
@@ -140,12 +168,14 @@ bash scripts/restore.sh /absolute/path/to/ptr-backup.tar.gz
 # 如果浏览器安装在项目测试目录：
 $env:PLAYWRIGHT_BROWSERS_PATH="$PWD\test-output\browsers"
 .\.venv\Scripts\python.exe -m backend.tests.e2e_live
+.\.venv\Scripts\python.exe -m backend.tests.e2e_pools
+.\.venv\Scripts\python.exe -m backend.tests.e2e_faults
 .\.venv\Scripts\python.exe -m backend.tests.e2e_ui
 cd frontend
 pnpm lint
 pnpm build
 ```
 
-测试只写 `test-output`。`e2e_live` 使用真实 Chromium 测试登录、Add Card、Fill、Submit、结果解析、STOP、Run 隔离和脱敏证据；`e2e_ui` 启动实际 Next.js / FastAPI / Sandbox，点击导入、预览、选择、START、导出，并生成桌面/平板截图。
+测试只写 `test-output`，每次端到端执行使用独立目录。`e2e_pools` 验证资源池数量、真实代理、Session 复用、终态截图像素、导航异常恢复和批量停止。`e2e_live` 使用真实 Chromium 测试登录、Add Card、Fill、Submit、结果解析、STOP、Run 隔离和脱敏证据；`e2e_ui` 启动实际 Next.js / FastAPI / Sandbox，点击导入、预览、选择、START、导出，并生成桌面/平板截图。
 
 参考：[Playwright Trace 配置](https://playwright.dev/python/docs/api/class-tracing)、[Next.js 安装文档](https://nextjs.org/docs/app/getting-started/installation)。
