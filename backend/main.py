@@ -9,13 +9,18 @@ from backend.auth import login, require_admin, TOKENS
 @asynccontextmanager
 async def lifespan(app):
     migrate()
+    from backend.runner import start_worker, stop_worker
+    start_worker()
     yield
+    stop_worker()
 
 app = FastAPI(title='Payment Test Runner', version='0.1.0', lifespan=lifespan)
 from backend.importer import router as import_router
 app.include_router(import_router)
 from backend.catalog import router as catalog_router
 app.include_router(catalog_router)
+from backend.runs import router as runs_router
+app.include_router(runs_router)
 
 class Login(BaseModel):
     password: str
@@ -35,4 +40,5 @@ def logout(request: Request, response: Response):
 @app.get('/api/health')
 def health():
     rows('SELECT 1')
-    return {'version':'0.1.0','mode':'LIVE','backend':True,'database':True,'disk':shutil.disk_usage(DATA).free > 100*1024*1024}
+    from backend import runner
+    return {'version':'0.1.0','mode':'LIVE','backend':True,'database':True,'worker':bool(runner.THREAD and runner.THREAD.is_alive()),'disk':shutil.disk_usage(DATA).free > 100*1024*1024}

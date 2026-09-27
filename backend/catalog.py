@@ -52,7 +52,6 @@ class Selection(BaseModel):
     all: bool = False
     confirmed: bool = False
 
-@router.post('/{kind}/delete')
 def delete_data(kind: str, body: Selection):
     if kind not in ('accounts','cards'):
         raise HTTPException(404,'类型不存在')
@@ -65,6 +64,14 @@ def delete_data(kind: str, body: Selection):
         elif body.ids:
             db.executemany(f'DELETE FROM {kind} WHERE id=?', [(i,) for i in body.ids])
     return {'ok':True}
+
+@router.post('/accounts/delete')
+def delete_accounts(body: Selection):
+    return delete_data('accounts',body)
+
+@router.post('/cards/delete')
+def delete_cards(body: Selection):
+    return delete_data('cards',body)
 
 @router.post('/accounts/{account_id}/clear-session')
 def clear_session(account_id: int):
