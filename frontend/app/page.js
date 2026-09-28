@@ -137,6 +137,7 @@ export default function App() {
     [cids, setCids] = useState([]),
     [taskId, setTaskId] = useState(1),
     [nids, setNids] = useState([]),
+    [networkRevision, setNetworkRevision] = useState(0),
     [check, setCheck] = useState(null),
     [checking, setChecking] = useState(false),
     [working, setWorking] = useState(false);
@@ -397,7 +398,7 @@ export default function App() {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [logged, active, planKey, currentTask?.version, report]);
+  }, [logged, active, planKey, currentTask?.version, networkRevision, report]);
   if (boot)
     return (
       <div className="login">
@@ -1626,7 +1627,8 @@ export default function App() {
                   <div className="panel-body">
                     <p className="section-note">
                       格式：http://host:port、http://username:password@host:port、socks5://host:port；CSV：name,protocol,host,port,username,password。SOCKS5
-                      不支持认证。新节点默认已选，只有 CONNECTED 节点能参与。
+                      支持用户名密码认证。首次导入代理会取消 Direct
+                      默认选择；只有 CONNECTED 节点能参与。
                     </p>
                     <div className="toolbar">
                       <button onClick={() => openImport("networks")}>
@@ -1687,6 +1689,7 @@ export default function App() {
                           <th>状态</th>
                           <th>Latency</th>
                           <th>原因</th>
+                          <th>操作</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1712,6 +1715,23 @@ export default function App() {
                                 : n.latency_ms + " ms"}
                             </td>
                             <td>{n.reason || "—"}</td>
+                            <td>
+                              {n.protocol !== "Direct" && (
+                                <button
+                                  disabled={working || !!live}
+                                  onClick={() => {
+                                    setEditor({
+                                      ...n,
+                                      password: "",
+                                      clear_credentials: false,
+                                    });
+                                    setModal({ type: "network", id: n.id });
+                                  }}
+                                >
+                                  编辑节点
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1748,7 +1768,7 @@ export default function App() {
             label="粘贴文本"
             help={
               modal.kind === "networks"
-                ? "用途：批量导入节点 · 必填 · HTTP/SOCKS5 URL 或六列 CSV；示例：http://127.0.0.1:8899。SOCKS5 不支持用户名密码认证。"
+                ? "用途：批量导入节点 · 必填 · HTTP/SOCKS5 URL 或六列 CSV；示例：http://127.0.0.1:8899。SOCKS5 支持用户名密码认证（各 1–255 字节）。"
                 : modal.kind === "accounts"
                   ? "用途：批量导入账号 · 必填 · 每行 email|password 或 email----password；CSV 两列 email,password。示例：demo@example.com|sandbox-pass。"
                   : "用途：导入合成卡 · 必填 · 每行 number|month|year|cvc，CSV 同样四列。示例：4242424242424242|12|2035|123。Local Sandbox fixture 限制只在运行适配器中检查；其他授权测试环境允许官方测试数据。"
@@ -2020,8 +2040,8 @@ export default function App() {
         <Modal
           error={error}
           notice={notice}
-          title="添加网络"
-          description="用于连接本次任务目标。网络错误不会触发 IP 轮换。"
+          title={modal.id ? "编辑节点" : "添加网络"}
+          description="连接授权测试目标。保存后需重新检查连接；运行中不能编辑节点。"
           onClose={close}
         >
           {fields(
@@ -2056,14 +2076,28 @@ export default function App() {
           )}
           {fields(
             "Username",
-            "用途：HTTP 代理认证用户名 · 可选 · 文本；示例：qa-user。SOCKS5 仅支持无认证。",
+            "用途：代理认证用户名 · 可选 · 文本；示例：qa-user。SOCKS5 认证需同时填写密码，各 1–255 字节。",
             "username",
           )}
           {fields(
             "Password",
-            "用途：HTTP 代理认证密码 · 可选 · 文本；示例：由代理管理员提供的密码。加密保存。",
+            modal.id
+              ? "用途：更新代理密码 · 可选 · 留空保留原密码；填写代理管理员提供的新密码，保存时加密。"
+              : "用途：代理认证密码 · 可选 · 使用 SOCKS5 认证时必填；由代理管理员提供，保存时加密。",
             "password",
             "password",
+          )}
+          {modal.id && (
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={!!editor.clear_credentials}
+                onChange={(e) =>
+                  setEditor({ ...editor, clear_credentials: e.target.checked })
+                }
+              />
+              清除用户名和密码（仅连接无需认证的代理时使用）
+            </label>
           )}
           <div className="modal-footer">
             <button
@@ -2071,10 +2105,22 @@ export default function App() {
               disabled={working}
               onClick={() =>
                 act(async () => {
-                  await api("/networks", "POST", {
-                    ...editor,
-                    port: +editor.port,
-                  });
+                  await api(
+                    modal.id ? "/networks/" + modal.id : "/networks",
+                    modal.id ? "PUT" : "POST",
+                    {
+                      ...editor,
+                      port: +editor.port,
+                      username: editor.clear_credentials ? "" : editor.username,
+                      password: editor.clear_credentials
+                        ? ""
+                        : modal.id && !editor.password
+                          ? null
+                          : editor.password,
+                    },
+                  );
+                  setCheck(null);
+                  setNetworkRevision((v) => v + 1);
                   close();
                   await refresh();
                 })

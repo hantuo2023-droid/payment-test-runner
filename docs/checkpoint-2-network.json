@@ -1,0 +1,15 @@
+{
+  "authenticated SOCKS5 real Chromium": "PASS",
+  "wrong credentials no Direct fallback": "PASS",
+  "credential change invalidates proof": "PASS",
+  "UI edit / password keep / replace / clear": "PASS",
+  "active Run edit rejected": "PASS",
+  "counts": {
+    "STARTING_BROWSER": 1,
+    "AUTH_SUCCESS": 1,
+    "FILLING": 2,
+    "SUBMITTING": 2,
+    "REUSING_CONTEXT": 1
+  },
+  "page_errors": []
+}

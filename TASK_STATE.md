@@ -57,8 +57,8 @@
 - 未新增 migration，未修改 Runner / Network 调度、Session 或 Result。
 - LAST COMMIT：本节所在的 fix: normalize imported resource data 提交；用 git log -1 获取实际 hash。
 
-### NEXT: CHECKPOINT 2
-1. authenticated SOCKS5（Chromium 需受控转接方案）、节点编辑与凭据变更、Direct 默认选择；仅运行相关 network tests 后提交。
+### 后续计划（Checkpoint 2 已完成，见下方）
+1. authenticated SOCKS5、节点编辑与凭据变更、Direct 默认选择：已完成。
 2. Checkpoint 3：提交前坏资源切换不得消耗数据；Submit started 后禁止自动重新提交。
 3. Checkpoint 4：授权 origin allowlist、Preview 警告 UI/说明与其余文档修正、结果导出回归；最后一次完整验收。
 4. 如有中断，先看 git status / git diff，保留当前修改，不重写/重克隆/重跑已可靠阶段验收。
@@ -68,3 +68,21 @@
 
 ### 交付状态
 Checkpoint 1 为本地恢复点；本轮未 push。公开仓库信息仅按用户事实更正文档，没有执行任何 GitHub/网络权限查询或重新认证。
+
+
+### COMPLETED CHECKPOINT: 2/4
+- authenticated SOCKS5：Chromium 经临时本机 SOCKS5 转接完成上游用户名/密码认证；所有目标流量走所选节点，认证失败不回退 Direct。无新增依赖或 migration。
+- 转接使用独立 selector 事件循环，避免本机 Python 3.12 Windows Proactor 在 reset 连接关闭时无法释放监听器；浏览器结束/STOP/失败同时清理连接、监听端口与线程。补测未完成握手即关闭的竞态。
+- 节点编辑沿用原弹窗：名称、协议、地址、端口、用户名和密码；空密码保留原密文，明确勾选才清空凭据，旧密码不回显。运行中禁止编辑。
+- 修改配置重置健康状态、使旧准备检查失效；并发旧检查不能覆盖已变更凭据的状态。首次加入代理取消初始 Direct 勾选，后续保留用户主动选择；删除最后代理恢复 Direct。
+- 阶段相关测试：新增 network 5 项 + 原 importer/API 各 1 项，共 7 项通过。首次补测发现未开始处理的连接关闭竞态，修复后仅重跑该项 PASS；其余 6 项已有本轮 PASS，不重复全跑。原 13 项基线保留。
+- 真实 Chromium + 本地受控 RFC 1928/1929 上游 + Local Sandbox + 节点编辑 UI：PASS。正确/错误/修正凭据、旧 proof 失效、运行中编辑拒绝、密码保留/替换/清空通过；2 个 BOUND、Browser 1、Login 1、Fill 2、Submit 2、Context reuse 1，pageerror 0。
+- 阶段证据：docs/checkpoint-2-network.json；原始隔离测试数据在忽略的 test-output/。公网代理 NOT TESTED（未提供）；未访问 GitHub、未更改认证、未 push。
+- 全量 pytest、lint/build、完整 E2E 与 Docker 仍 NOT TESTED，统一留至 Checkpoint 4。现有 E2E 的 Direct 默认勾选断言已相应调整，完整脚本尚未重跑。
+- LAST COMMIT：本节所在的 fix: support authenticated network resources 提交；以 git log -1 为准。
+
+### NEXT: CHECKPOINT 3/4
+1. 提交前坏账号/节点切换不能消耗数据；同一数据可继续使用可用资源。
+2. Submit started 后禁止自动重新提交，未知结果保持 ERROR/UNKNOWN_RESULT。
+3. 仅运行对应资源切换/提交边界测试，更新本文件并本地提交；然后继续 Checkpoint 4。
+4. 恢复时先读本文件及 git status，保留已通过的两个检查点，不重复完整验收。

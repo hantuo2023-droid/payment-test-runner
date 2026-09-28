@@ -12,7 +12,8 @@ from backend.auth import require_admin
 from backend.catalog import get_row, export_file, busy, Selection
 from backend.catalog import Task, validate_task
 from backend.store import rows, connect, execute, now, seal, DATA
-from backend.runner import ARTIFACTS, proxy_config
+from backend.runner import ARTIFACTS
+from backend.network_transport import BrowserNetwork, close_browser_network
 from backend import runner
 
 router = APIRouter(prefix='/api',dependencies=[Depends(require_admin)])
@@ -69,11 +70,12 @@ def signature(task, resources):
 async def probe_browser(task,network):
     started = time.monotonic()
     browser = None
+    lease = BrowserNetwork(network)
     chromium = False
     try:
         async with async_playwright() as pw:
             try:
-                browser = await pw.chromium.launch(headless=True,proxy=proxy_config(network))
+                browser = await pw.chromium.launch(headless=True,proxy=await lease.start())
                 chromium = True
                 page = await browser.new_page()
                 response = await page.goto(task['target_url'],wait_until='domcontentloaded',timeout=10000)
@@ -81,7 +83,7 @@ async def probe_browser(task,network):
                     return {'chromium':True,'connected':False,'reason':f'目标返回 HTTP {response.status if response else "未知"}'}
                 return {'chromium':True,'connected':True,'latency_ms':round((time.monotonic()-started)*1000),'reason':''}
             finally:
-                if browser: await browser.close()
+                await close_browser_network(browser,lease)
     except Exception:
         return {'chromium':chromium,'connected':False,'reason':'浏览器启动或连接失败，请检查地址与网络配置'}
 
@@ -89,7 +91,10 @@ async def probe_pool(task, networks):
     reports=[]
     for network in networks:
         report=await probe_browser(task,network)
-        execute('UPDATE networks SET status=?,latency_ms=?,checked_at=?,check_task_id=?,check_task_version=?,reason=? WHERE id=?',('CONNECTED' if report['connected'] else 'FAILED',report.get('latency_ms'),now(),task['id'],task['version'],report['reason'],network['id']))
+        with connect() as db:
+            changed=db.execute('UPDATE networks SET status=?,latency_ms=?,checked_at=?,check_task_id=?,check_task_version=?,reason=? WHERE id=? AND secret IS ? AND host IS ? AND port IS ? AND protocol=? AND username IS ?',('CONNECTED' if report['connected'] else 'FAILED',report.get('latency_ms'),now(),task['id'],task['version'],report['reason'],network['id'],network.get('secret'),network.get('host'),network.get('port'),network['protocol'],network.get('username'))).rowcount
+        if not changed:
+            report.update(connected=False,reason='节点配置已变更，请重新检查连接')
         reports.append(dict(report,id=network['id'],name=network['name']))
     return reports
 

@@ -26,9 +26,10 @@ def test_ambiguous_csv_is_not_guessed():
 
 def test_nodes_formats_dedup_and_safe_errors():
     summary,data=parse('http://user:node-secret@LOCALHOST:18888\nhttp://user:changed@localhost:18888\nnode,SOCKS5,localhost,1080,,\nsocks5://user:hidden@localhost:1081\nhttp://user:very-secret@bad:wrong','networks')
-    assert summary['valid']==2 and summary['duplicates']==1 and len(summary['errors'])==2
+    assert summary['valid']==3 and summary['duplicates']==1 and len(summary['errors'])==1
     assert data[0]['host']=='localhost' and data[0]['password']=='node-secret'
     assert all(secret not in str(summary) for secret in ('node-secret','hidden','very-secret'))
+    assert data[2]['protocol']=='SOCKS5' and data[2]['password']=='hidden'
     assert 'SOCKS5' in summary['errors'][0]['reason']
 
 

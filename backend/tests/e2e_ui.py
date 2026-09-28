@@ -75,7 +75,7 @@ async def browser_test():
         await import_data('导入测试数据','number,month,year,cvc\n4242424242424242,12,2035,123\n4000000000000002,12,2035,123\n4000000000000069,12,2035,123','cards.csv')
         await nav('设置')
         await import_data('粘贴导入节点','http://127.0.0.1:18891\nhttp://127.0.0.1:18892','nodes.txt')
-        await selected('accounts',2);await selected('cards',3);await selected('networks',3)
+        await selected('accounts',2);await selected('cards',3);await selected('networks',2)
         default=await run(3)
         print('PASS UI default import -> START: 3 real results',flush=True)
         pages={'accounts':'账号','cards':'测试数据','networks':'设置'}

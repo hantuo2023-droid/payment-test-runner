@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from backend.auth import require_admin
-from backend.store import rows, execute, connect, seal
+from backend.store import rows, execute, connect, seal, unseal
 
 router = APIRouter(prefix='/api', dependencies=[Depends(require_admin)])
 
@@ -71,7 +71,9 @@ def delete_networks(body: Selection):
     # Direct always remains available as a selectable fallback, never silently used
     # when proxies are explicitly selected for a run.
     if not rows("SELECT id FROM networks WHERE protocol='Direct'"):
-        execute("INSERT INTO networks(name,protocol,selected) VALUES('Direct','Direct',1)")
+        execute("INSERT INTO networks(name,protocol,selected) SELECT 'Direct','Direct',NOT EXISTS(SELECT 1 FROM networks WHERE protocol!='Direct')")
+    if not rows("SELECT 1 FROM networks WHERE protocol!='Direct'"):
+        execute("UPDATE networks SET selected=1 WHERE protocol='Direct'")
     return result
 
 @router.get('/networks/export')
@@ -175,15 +177,49 @@ class Network(BaseModel):
 def networks():
     return rows('SELECT id,name,protocol,host,port,username,selected,status,latency_ms,checked_at,reason FROM networks ORDER BY id')
 
+class NetworkEdit(Network):
+    # Omitted/null preserves the encrypted password; explicit empty string clears.
+    password: str | None = None
+
+
+def normalized_network(body, password):
+    from backend.network_import import validate_network
+    try:
+        return validate_network(dict(body.model_dump(),password=password))
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
+
+
 @router.post('/networks')
 def create_network(body: Network):
-    if body.protocol not in ('HTTP','SOCKS5') or not body.host or any(c in body.host for c in '/@:#? '):
-        raise HTTPException(400,'协议需为 HTTP/SOCKS5，Host 需为 IP 或域名')
-    if body.protocol == 'SOCKS5' and (body.username or body.password):
-        raise HTTPException(400,'Chromium 不支持 SOCKS5 用户名密码认证；请选择 HTTP 或无认证 SOCKS5')
-    from backend.network_import import network_key
-    duplicate=next((r for r in rows('SELECT * FROM networks') if network_key(r)==network_key(body.model_dump())),None)
-    if duplicate: return {'id':duplicate['id'],'duplicate':True}
-    if body.password and body.password in body.name: body.name=f'{body.host}:{body.port}'
-    item_id = execute('INSERT INTO networks(name,protocol,host,port,username,secret) VALUES(?,?,?,?,?,?)',(body.name,body.protocol,body.host,body.port,body.username,seal(body.password)))
+    from backend.network_import import network_key, proxy_added
+    item=normalized_network(body,body.password)
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        items=[dict(r) for r in db.execute('SELECT * FROM networks')]
+        duplicate=next((r for r in items if network_key(r)==network_key(item)),None)
+        if duplicate: return {'id':duplicate['id'],'duplicate':True}
+        item_id=db.execute('INSERT INTO networks(name,protocol,host,port,username,secret) VALUES(?,?,?,?,?,?)',(item['name'],item['protocol'],item['host'],item['port'],item['username'],seal(item['password']))).lastrowid
+        proxy_added(db,any(n['protocol']!='Direct' for n in items))
     return {'id':item_id}
+
+
+@router.put('/networks/{network_id}')
+def edit_network(network_id: int, body: NetworkEdit):
+    from backend.network_import import network_key
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        if db.execute("SELECT 1 FROM runs WHERE status IN ('QUEUED','RUNNING')").fetchone():
+            raise HTTPException(409,'请先停止当前运行后再编辑节点')
+        saved=db.execute('SELECT * FROM networks WHERE id=?',(network_id,)).fetchone()
+        if not saved: raise HTTPException(404,'节点不存在')
+        if saved['protocol']=='Direct': raise HTTPException(400,'Direct 无代理配置可编辑')
+        password=unseal(saved['secret']) if body.password is None else body.password
+        item=normalized_network(body,password)
+        if any(network_key(dict(n))==network_key(item) for n in db.execute('SELECT * FROM networks WHERE id!=?',(network_id,))):
+            raise HTTPException(409,'已有相同协议、Host、端口和用户名的节点')
+        # Changing credentials invalidates readiness via the secret signature.
+        # Existing immutable Run snapshots remain untouched.
+        encrypted=saved['secret'] if body.password is None else seal(password)
+        db.execute("UPDATE networks SET name=?,protocol=?,host=?,port=?,username=?,secret=?,status='UNKNOWN',latency_ms=NULL,checked_at=NULL,check_task_id=NULL,check_task_version=NULL,reason='' WHERE id=?",(item['name'],item['protocol'],item['host'],item['port'],item['username'],encrypted,network_id))
+    return {'id':network_id}

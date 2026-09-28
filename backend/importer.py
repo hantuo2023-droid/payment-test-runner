@@ -12,7 +12,7 @@ from backend.store import rows, connect, execute, now, seal, unseal
 router = APIRouter(prefix='/api/import', dependencies=[Depends(require_admin)])
 EMAIL = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 from backend.import_normalizer import fields, header, card_fields
-from backend.network_import import network_key, network_line
+from backend.network_import import network_key, network_line, proxy_added
 
 def parse(text, kind, existing=()):
     seen = set(existing)
@@ -30,7 +30,7 @@ def parse(text, kind, existing=()):
                 item = network_line(line)
                 key = network_key(item)
             except (ValueError,csv.Error):
-                errors.append({'line':number,'raw':'[节点凭据已隐藏]','reason':'节点格式错误：HTTP/SOCKS5 + Host + 1–65535 端口；SOCKS5 不支持用户名密码认证'})
+                errors.append({'line':number,'raw':'[节点凭据已隐藏]','reason':'节点格式错误：HTTP/SOCKS5 + Host + 1–65535 端口；SOCKS5 认证需用户名与密码各 1–255 字节'})
                 continue
             if key in seen: duplicate += 1
             else:
@@ -105,6 +105,7 @@ def confirm(body: Confirm):
         if not preview or (datetime.now(timezone.utc)-datetime.fromisoformat(preview['created_at'])).total_seconds() > 1800:
             raise HTTPException(400,'预览已失效，请重新预览')
         added = 0
+        had_proxy = bool(db.execute("SELECT 1 FROM networks WHERE protocol!='Direct' LIMIT 1").fetchone())
         for item in unseal(preview['secret']):
             if preview['kind'] == 'accounts':
                 cursor = db.execute('INSERT OR IGNORE INTO accounts(email,secret,created_at) VALUES(?,?,?)',(item['email'],seal(item['password']),now()))
@@ -114,5 +115,7 @@ def confirm(body: Confirm):
                 if network_key(item) in {network_key(dict(n)) for n in db.execute('SELECT * FROM networks')}: continue
                 cursor = db.execute('INSERT INTO networks(name,protocol,host,port,username,secret) VALUES(?,?,?,?,?,?)',(item['name'],item['protocol'],item['host'],item['port'],item['username'],seal(item['password'])))
             added += cursor.rowcount
+        if preview['kind']=='networks' and added:
+            proxy_added(db,had_proxy)
         db.execute('DELETE FROM previews WHERE id=?',(body.preview_id,))
     return {'imported':added}

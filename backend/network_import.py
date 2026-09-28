@@ -16,10 +16,29 @@ def network_line(line):
         item = dict(zip(('name','protocol','host','port','username','password'),p))
         item['port'] = int(item['port'])
         item['protocol'] = item['protocol'].upper()
-    if item['protocol'] not in ('HTTP','SOCKS5') or not item['host'] or any(c in item['host'] for c in '/@:#? ') or not item['port'] or not 1 <= item['port'] <= 65535:
-        raise ValueError('Invalid host or port')
-    if item['protocol'] == 'SOCKS5' and (item['username'] or item['password']):
-        raise ValueError('Chromium does not support authenticated SOCKS5')
-    item['host'] = item['host'].lower()
-    if item['password'] and item['password'] in item['name']: item['name'] = f"{item['host']}:{item['port']}"
+    return validate_network(item)
+
+
+def validate_network(item):
+    item = dict(item)
+    item['protocol'] = item['protocol'].upper()
+    item['host'] = (item.get('host') or '').strip().lower()
+    try:
+        item['port'] = int(item['port'])
+    except (TypeError,ValueError):
+        raise ValueError('节点需要有效端口') from None
+    if item['protocol'] not in ('HTTP','SOCKS5') or not item['host'] or any(c in item['host'] for c in '/@:#?') or any(c.isspace() or ord(c)<32 for c in item['host']) or not 1 <= int(item['port']) <= 65535:
+        raise ValueError('节点需要 HTTP/SOCKS5、有效 Host 和 1–65535 端口')
+    username, password = item.get('username') or '', item.get('password') or ''
+    if item['protocol'] == 'SOCKS5' and (username or password):
+        if not 1 <= len(username.encode('utf-8')) <= 255 or not 1 <= len(password.encode('utf-8')) <= 255:
+            raise ValueError('SOCKS5 认证需用户名与密码，各为 1–255 个 UTF-8 字节')
+    if password and password in item['name']: item['name'] = f"{item['host']}:{item['port']}"
     return item
+
+
+def proxy_added(db, previously_had_proxy):
+    # First imported proxy replaces the initial Direct default. Later explicit
+    # checkbox choices, including selecting Direct alongside proxies, are kept.
+    if not previously_had_proxy:
+        db.execute("UPDATE networks SET selected=0 WHERE protocol='Direct'")

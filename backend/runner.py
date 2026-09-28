@@ -15,9 +15,8 @@ SHUTDOWN = threading.Event()
 THREAD = None
 TIMEOUT = int(os.getenv('PTR_TIMEOUT','30'))
 
-def proxy_config(network):
-    if network['protocol'] == 'Direct': return None
-    return {'server':f'{"http" if network["protocol"] == "HTTP" else "socks5"}://{network["host"]}:{network["port"]}',**({'username':network['username'],'password':unseal(network['secret'])} if network.get('username') else {})}
+from backend.network_transport import BrowserNetwork, close_browser_network
+
 
 def clean_url(value):
     parsed = urlsplit(value)
@@ -45,7 +44,7 @@ async def run_item(pw, run, result, account, network, card, cache):
     folder = ARTIFACTS / str(run['id']) / str(result['id'])
     folder.mkdir(parents=True,exist_ok=True)
     started = time.monotonic()
-    browser = context = page = watcher = None
+    browser = context = page = watcher = lease = None
     trace_started = False
     status,code = 'ERROR','UNKNOWN_RESULT'
     reason=''
@@ -64,13 +63,15 @@ async def run_item(pw, run, result, account, network, card, cache):
     try:
         cancelled()
         if pair in cache:
-            browser,context,page=cache[pair]
+            browser,context,page,lease=cache[pair]
             step('REUSING_CONTEXT','Reusing current Browser Context and Session',page)
         else:
-            for old_browser,_,_ in cache.values(): await old_browser.close()
+            for old_browser,_,_,old_lease in cache.values(): await close_browser_network(old_browser,old_lease)
             cache.clear()
             step('STARTING_BROWSER','Chromium started')
-            browser = await pw.chromium.launch(headless=True,proxy=proxy_config(network))
+            lease = BrowserNetwork(network)
+            proxy = await lease.start()
+            browser = await pw.chromium.launch(headless=True,proxy=proxy)
             session = rows("SELECT * FROM sessions WHERE account_id=? AND task_id=? AND state='VALID' AND version=?",(account['id'],task['id'],task['version']))
             storage = unseal(session[0]['secret']) if session else None
             context = await browser.new_context(storage_state=storage,viewport={'width':1280,'height':900})
@@ -82,7 +83,7 @@ async def run_item(pw, run, result, account, network, card, cache):
                     else: await route.continue_()
                 await context.route('**/*',guard)
             page = await context.new_page()
-            cache[pair]=(browser,context,page)
+            cache[pair]=(browser,context,page,lease)
         await context.tracing.start(screenshots=False,snapshots=False,sources=False)
         trace_started = True
         page.set_default_timeout(TIMEOUT*1000)
@@ -133,9 +134,12 @@ async def run_item(pw, run, result, account, network, card, cache):
                 (folder/'private-trace.zip').unlink(missing_ok=True)
                 evidence_error = True
         if browser and (status=='CANCELLED' or code in ('NETWORK_ERROR','BAD_CREDENTIALS','LOGIN_TIMEOUT')):
-            try: await browser.close()
+            try: await close_browser_network(browser,lease)
             except Exception: evidence_error = True
             cache.pop(pair,None)
+        if lease and pair not in cache:
+            try: await close_browser_network(browser,lease)
+            except Exception: evidence_error = True
         if evidence_error:
             step('EVIDENCE_WARNING','Some browser evidence could not be saved')
         if code in ('BAD_CREDENTIALS','LOGIN_TIMEOUT'):
@@ -184,8 +188,8 @@ async def run_batch(run):
                         execute("UPDATE results SET status='CANCELLED',code='ACCESS_BLOCKED',reason='Site restriction; no node rotation',step='NOT_EXECUTED',ended_at=? WHERE run_id=? AND status='WAITING'",(now(),run['id']))
                         break
             finally:
-                for browser,_,_ in cache.values():
-                    try: await browser.close()
+                for browser,_,_,lease in cache.values():
+                    try: await close_browser_network(browser,lease)
                     except Exception: pass
     except Exception:
         execute("UPDATE results SET status='ERROR',code='WORKER_ERROR',reason='Worker interrupted',step='ERROR',ended_at=? WHERE run_id=? AND status='RUNNING'",(now(),run['id']))

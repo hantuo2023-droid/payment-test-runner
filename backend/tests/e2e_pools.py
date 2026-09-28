@@ -82,7 +82,8 @@ def main():
             networks=client.get('/api/networks').json()
             direct=next(n['id'] for n in networks if n['protocol']=='Direct')
             nodes=[n['id'] for n in networks if n['protocol']=='HTTP']
-            assert all(n['selected'] for n in networks)
+            assert all(n['selected'] for n in networks if n['protocol']!='Direct')
+            assert not next(n['selected'] for n in networks if n['protocol']=='Direct')
             def selection(kind,ids):
                 post('/pools/'+kind+'/selection',{'all':True,'selected':False})
                 assert not any(r['selected'] for r in client.get('/api/'+kind).json())

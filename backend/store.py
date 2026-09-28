@@ -76,7 +76,7 @@ def seed():
                 ('Preply Payment UI', '仅登录、导航和 Add Card 界面验证；不会填写或提交卡片', 'Production','https://preply.com','https://preply.com/en/login','https://preply.com/en/settings/payments',1,'preply_ui',0),
             ])
         if not db.execute("SELECT 1 FROM networks WHERE protocol='Direct'").fetchone():
-            db.execute("INSERT INTO networks(name,protocol) VALUES('Direct','Direct')")
+            db.execute("INSERT INTO networks(name,protocol,selected) SELECT 'Direct','Direct',NOT EXISTS(SELECT 1 FROM networks WHERE protocol!='Direct')")
 
 def migrate():
     from alembic.config import Config
