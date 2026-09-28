@@ -1,3 +1,12 @@
+# 当前增量修复规则
+
+最新用户执行规则见 [docs/RELIABILITY_CHECKPOINTS.md](docs/RELIABILITY_CHECKPOINTS.md)，优先于下方 0.2.0 历史规格。
+保留原 13 项测试与已通过功能，按四个 checkpoint 本地提交。仅阶段相关测试；四阶段完成后做一次最终完整回归。
+GitHub 已由用户确认 Public，不再联网核验、重新 clone 或配置认证。不部署或验证用户 VPS。
+内部 month/year/cvc 保持兼容，不创建非必要迁移。阶段状态与继续位置见 TASK_STATE.md。
+
+---
+
 请基于当前已经完成的 Payment Test Runner 0.1.0 继续修改。
 
 不要从零重写。

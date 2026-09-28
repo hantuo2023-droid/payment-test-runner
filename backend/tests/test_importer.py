@@ -42,3 +42,56 @@ def test_fixture_limit_belongs_to_adapter():
     assert not validate_data(qa,data[0])
     assert validate_data(dict(qa,environment='Production'),data[0])
     assert validate_data(dict(qa,authorized=False),data[0])
+
+
+def test_dirty_numeric_formats_normalize_to_same_record():
+    samples=[
+        '4242 4242 4242 4242|7|35|123',
+        '4242-4242-4242-4242;07;2035;123',
+        '4242424242424242\t7\t35\t123',
+        '4242424242424242:7:2035:123',
+        '4242 4242 4242 4242 7 35 123',
+        '４２４２４２４２４２４２４２４２｜０７｜２０３５｜１２３',
+        '\ufeff42424242\u200b42424242|07|35|123',
+        '"4242424242424242", "07", "2035", "123"',
+        '4242424242424242|7/35|123',
+        '4242424242424242,07/2035,123',
+        '4242 4242 4242 4242 7 / 35 123',
+    ]
+    summary,data=parse('\n'.join(samples),'cards')
+    assert summary['valid']==1 and summary['duplicates']==len(samples)-1
+    assert not summary['errors'] and not summary['warnings']
+    assert data[0]['month']=='07' and data[0]['year']=='2035' and data[0]['cvc']=='123'
+    assert 'year_full' not in data[0]
+
+
+def test_expired_data_is_warning_not_error():
+    from datetime import datetime
+    today=datetime.now()
+    summary,data=parse(f'4242424242424242|01/00|123\n4000000000000002|{today.month}|{today.year}|123','cards')
+    assert summary['valid']==2 and not summary['errors']
+    assert len(summary['warnings'])==1 and summary['warnings'][0]['line']==1
+    assert summary['warnings'][0]['code']=='EXPIRED_TEST_DATA'
+    assert data[0]['year']=='2000' and data[0]['month']=='01'
+    assert data[0]['number'] not in str(summary) and '123' not in str(summary)
+
+
+def test_expiry_errors_stay_errors_and_headers_are_ignored():
+    summary,data=parse('"number","expiry","cvc"\n4242424242424242|13/35|123\n4242424242424242|12/350|123\n4242424242424242|12/35|abc\n4242424242424242|12/35|123|extra','cards')
+    assert summary['total']==4 and len(summary['errors'])==4 and not data
+    assert not summary['warnings']
+    assert '4242424242424242' not in str(summary)
+
+
+def test_credentials_preserve_delimiters_and_unicode():
+    for line,password in [
+        ('a@example.com|pw|with,delimiters----Ａ','pw|with,delimiters----Ａ'),
+        ('a@example.com----pw|with----pipes','pw|with----pipes'),
+        ('a@example.com,"pw,with|pipe"','pw,with|pipe'),
+        ('a@example.com\tpw｜wide','pw｜wide'),
+        ('a@example.com｜pwＡ','pwＡ'),
+    ]:
+        summary,data=parse('\ufeff'+line,'accounts')
+        assert summary['valid']==1 and not summary['errors']
+        assert data[0]['password']==password
+        assert password not in str(summary)

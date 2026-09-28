@@ -1,7 +1,6 @@
 """Two-step import. No secrets in preview responses or error messages."""
 import csv
 import hashlib
-import io
 import re
 import secrets
 from datetime import datetime, timezone
@@ -12,15 +11,15 @@ from backend.store import rows, connect, execute, now, seal, unseal
 
 router = APIRouter(prefix='/api/import', dependencies=[Depends(require_admin)])
 EMAIL = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-from backend.tasks.data_contract import FIXTURES
+from backend.import_normalizer import fields, header, card_fields
 from backend.network_import import network_key, network_line
 
 def parse(text, kind, existing=()):
     seen = set(existing)
-    valid, errors, duplicate = [], [], 0
+    valid, errors, warnings, duplicate = [], [], [], 0
     count = 0
     for number, raw in enumerate(text.lstrip('\ufeff').splitlines(), 1):
-        line = raw.strip()
+        line = raw.strip().lstrip("\ufeff").strip()
         if not line:
             continue
         if line.lower().replace(' ', '') in ('email,password','number,month,year,cvc','name,protocol,host,port,username,password'):
@@ -39,7 +38,10 @@ def parse(text, kind, existing=()):
                 valid.append(item)
             continue
         try:
-            parts = [p.strip() for p in (line.split('----',1) if kind == 'accounts' and '----' in line and '|' not in line else line.split('|') if '|' in line else next(csv.reader([line],strict=True)))]
+            parts = fields(line, kind)
+            if header(parts, kind):
+                count -= 1
+                continue
         except csv.Error:
             errors.append({'line':number,'raw':'[原始内容仅保留在输入框]','reason':'CSV 引号未闭合或格式错误，无法确定字段'})
             continue
@@ -55,20 +57,18 @@ def parse(text, kind, existing=()):
                 item = {'email':key,'password':parts[1]}
         else:
             safe = '[支付数据已遮罩；原始内容仅保留在输入框]'
-            if len(parts) != 4:
-                error = '需要四列：测试卡号 | 月份 | 四位年份 | CVC'
-            else:
-                pan = re.sub(r'[ -]', '', parts[0])
-                if not re.fullmatch(r'\d{12,19}',pan):
-                    error = '需要 12–19 位官方测试卡号；仅用于授权非 Production 环境'
-                elif not parts[1].isdigit() or not 1 <= int(parts[1]) <= 12 or not re.fullmatch(r'\d{4}',parts[2]) or not re.fullmatch(r'\d{3,4}',parts[3]):
-                    error = '月份、四位年份或 CVC 格式错误'
-                elif (int(parts[2]),int(parts[1])) < (datetime.now().year,datetime.now().month):
-                    error = '有效期已过期'
-                else:
-                    item = {'number':pan,'month':f'{int(parts[1]):02d}','year':parts[2],'cvc':parts[3]}
-                    key = hashlib.sha256(f'{pan}|{item["month"]}|{item["year"]}'.encode()).hexdigest()
-                    item.update(fingerprint=key,masked='**** **** **** '+pan[-4:])
+            try:
+                item = card_fields(parts)
+                pan = item['number']
+                key = hashlib.sha256(f'{pan}|{item["month"]}|{item["year"]}'.encode()).hexdigest()
+                item.update(fingerprint=key,masked='**** **** **** '+pan[-4:])
+                today = datetime.now()
+                if (int(item['year']),int(item['month'])) < (today.year,today.month):
+                    warnings.append({'line':number,'raw':item['masked'],'code':'EXPIRED_TEST_DATA',
+                                     'reason':'有效期已过期；允许导入以测试过期场景，请确认当前授权环境适用'})
+            except ValueError as exc:
+                error = str(exc)
+
         if error:
             errors.append({'line':number,'raw':safe,'reason':error})
         elif key in seen:
@@ -76,7 +76,7 @@ def parse(text, kind, existing=()):
         else:
             seen.add(key)
             valid.append(item)
-    return {'total':count,'valid':len(valid),'duplicates':duplicate,'errors':errors}, valid
+    return {'total':count,'valid':len(valid),'duplicates':duplicate,'errors':errors,'warnings':warnings}, valid
 
 class Preview(BaseModel):
     kind: str

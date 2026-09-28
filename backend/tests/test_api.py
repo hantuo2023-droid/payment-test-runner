@@ -85,3 +85,19 @@ def test_pool_selection_usage_and_network_import(client):
     assert preview['duplicates']==1 and preview['valid']==0
     for kind in ('accounts','cards','networks'):
         assert client.post('/api/'+kind+'/delete',json={'ids':chosen(Plan(task_id=1))[kind],'confirmed':True}).status_code==200
+
+
+def test_expired_preview_confirm_keeps_compatible_encrypted_year(client):
+    from backend.store import unseal
+    import hashlib
+    fingerprint=hashlib.sha256(b'4242424242424242|01|2000').hexdigest()
+    execute('DELETE FROM cards WHERE fingerprint=?',(fingerprint,))
+    preview=client.post('/api/import/preview',json={'kind':'cards','text':'4242424242424242|1/00|123'}).json()
+    assert preview['valid']==1 and not preview['errors'] and len(preview['warnings'])==1
+    assert '4242424242424242' not in str(preview) and '123' not in str(preview['warnings'])
+    assert client.post('/api/import/confirm',json={'preview_id':preview['preview_id']}).json()['imported']==1
+    saved=rows('SELECT * FROM cards WHERE fingerprint=?',(fingerprint,))[0]
+    item=unseal(saved['secret'])
+    assert item['year']=='2000' and item['month']=='01' and 'year_full' not in item
+    assert saved['selected']==1 and '4242424242424242' not in saved['secret']
+    execute('DELETE FROM cards WHERE id=?',(saved['id'],))
