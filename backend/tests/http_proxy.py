@@ -10,6 +10,7 @@ class Proxy:
         self.requests=0
         self.block=False
         self.deny_bind=False
+        self.drop_bind=False
         parent=self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self,*args): pass
@@ -33,6 +34,10 @@ class Proxy:
                     upstream.request(self.command,url.path+('?' + url.query if url.query else ''),body=body,headers=headers)
                     response=upstream.getresponse()
                     data=response.read()
+                    if url.path=='/bind' and parent.drop_bind:
+                        # Upstream accepted the request; deliberately lose its response.
+                        self.close_connection=True
+                        return
                     self.send_response(response.status)
                     for k,v in response.getheaders():
                         if k.lower() not in ('transfer-encoding','connection','content-length'): self.send_header(k,v)

@@ -46,6 +46,7 @@ async def run_item(pw, run, result, account, network, card, cache):
     started = time.monotonic()
     browser = context = page = watcher = lease = None
     trace_started = False
+    submitted = False
     status,code = 'ERROR','UNKNOWN_RESULT'
     reason=''
     final_url=''
@@ -54,12 +55,18 @@ async def run_item(pw, run, result, account, network, card, cache):
         if SHUTDOWN.is_set() or rows('SELECT stop FROM runs WHERE id=?',(run['id'],))[0]['stop']:
             raise Outcome('STOPPED','CANCELLED')
     def step(state,action,page=None):
+        nonlocal submitted
+        if state == 'SUBMITTING' and not submitted:
+            cancelled()
+            # Persist consumption before a click can reach the target. Even an
+            # ambiguous click failure must never trigger automatic resubmission.
+            if result['card_id']:
+                execute('UPDATE cards SET used=1,selected=0,use_count=use_count+1,last_used_at=? WHERE id=?',(now(),result['card_id']))
+            submitted = True
         execute('UPDATE results SET step=? WHERE id=?',(state,result['id']))
         event = {'time':now(),'run_id':run['id'],'account':account['email'],'network':network['name'],'test_data_id':result['card_id'],'step':state,'url':clean_url(page.url) if page else '', 'action':action,'result':action if state in ('COMPLETED','ERROR','CANCELLED') else '', 'error':action if state == 'ERROR' else ''}
         with (folder/'log.jsonl').open('a',encoding='utf-8') as f: f.write(json.dumps(event,ensure_ascii=False)+'\n')
     execute("UPDATE results SET status='RUNNING',started_at=?,account_id=?,email=?,network_id=?,network_name=? WHERE id=?",(now(),account['id'],account['email'],network['id'],network['name'],result['id']))
-    if result['card_id']:
-        execute('UPDATE cards SET used=1,selected=0,use_count=use_count+1,last_used_at=? WHERE id=?',(now(),result['card_id']))
     try:
         cancelled()
         if pair in cache:
@@ -104,12 +111,12 @@ async def run_item(pw, run, result, account, network, card, cache):
     except Outcome as exc:
         status,code,reason = exc.status,exc.code,exc.code
     except BrowserTimeout:
-        code = 'LOGIN_TIMEOUT' if rows('SELECT step FROM results WHERE id=?',(result['id'],))[0]['step'] == 'AUTHENTICATING' else 'TARGET_NOT_FOUND'
+        code = 'UNKNOWN_RESULT' if submitted else 'LOGIN_TIMEOUT' if rows('SELECT step FROM results WHERE id=?',(result['id'],))[0]['step'] == 'AUTHENTICATING' else 'TARGET_NOT_FOUND'
     except Exception:
         # Browser exception strings can contain filled values and URLs. Never persist them.
         try: cancelled()
         except Outcome: status,code = 'CANCELLED','STOPPED'
-        else: code = 'NETWORK_ERROR'
+        else: code = 'UNKNOWN_RESULT' if submitted else 'NETWORK_ERROR'
     finally:
         if watcher:
             watcher.cancel()
@@ -151,7 +158,7 @@ async def run_item(pw, run, result, account, network, card, cache):
             db.execute('UPDATE results SET status=?,code=?,reason=?,final_url=?,ended_at=?,duration=? WHERE id=?',(status,code,reason,final_url,now(),round(time.monotonic()-started,3),result['id']))
             db.execute('UPDATE accounts SET last_result=? WHERE id=?',(code,account['id']))
             if result['card_id']: db.execute('UPDATE cards SET last_result=? WHERE id=?',(code,result['card_id']))
-    return code
+    return code, submitted
 
 async def run_batch(run):
     execute("UPDATE runs SET status='RUNNING' WHERE id=?",(run['id'],))
@@ -166,27 +173,39 @@ async def run_batch(run):
             try:
                 for item in rows("SELECT * FROM results WHERE run_id=? AND status='WAITING' ORDER BY id",(run['id'],)):
                     if SHUTDOWN.is_set() or rows('SELECT stop FROM runs WHERE id=?',(run['id'],))[0]['stop']: break
-                    exhaustion='NO_AVAILABLE_ACCOUNT' if not accounts else 'NO_AVAILABLE_NETWORK' if not networks else None
-                    if exhaustion:
-                        execute("UPDATE results SET status='ERROR',code=?,reason=?,step='NOT_EXECUTED',ended_at=? WHERE run_id=? AND status='WAITING'",(exhaustion,exhaustion,now(),run['id']))
+                    code = None
+                    while True:
+                        if SHUTDOWN.is_set() or rows('SELECT stop FROM runs WHERE id=?',(run['id'],))[0]['stop']: break
+                        exhaustion='NO_AVAILABLE_ACCOUNT' if not accounts else 'NO_AVAILABLE_NETWORK' if not networks else None
+                        if exhaustion:
+                            execute("UPDATE results SET status='ERROR',code=?,reason=?,step='NOT_EXECUTED',ended_at=? WHERE run_id=? AND status='WAITING'",(exhaustion,exhaustion,now(),run['id']))
+                            break
+                        account=accounts[account_cursor % len(accounts)]
+                        if not item['card_id']:
+                            account=next((a for a in accounts if a['id']==item['account_id']),account)
+                        network=networks[network_cursor % len(networks)]
+                        code,submitted=await run_item(pw,run,item,account,network,cards.get(item['card_id']),cache)
+                        failed_resource=False
+                        if code in ('BAD_CREDENTIALS','LOGIN_TIMEOUT'):
+                            accounts=[a for a in accounts if a['id']!=account['id']]
+                            execute("UPDATE accounts SET status='UNAVAILABLE' WHERE id=?",(account['id'],))
+                            failed_resource=True
+                        if code=='NETWORK_ERROR':
+                            networks=[n for n in networks if n['id']!=network['id']]
+                            execute("UPDATE networks SET status='FAILED',reason='NETWORK_ERROR' WHERE id=?",(network['id'],))
+                            failed_resource=True
+                        if failed_resource and not submitted and item['card_id']:
+                            # Retry this same result/data only before submission.
+                            # Each retry removes a resource, so exhaustion is bounded.
+                            execute("UPDATE results SET status='WAITING',code='',reason='',ended_at=NULL,step='RESOURCE_RETRY' WHERE id=?",(item['id'],))
+                            continue
+                        account_cursor+=1
+                        network_cursor+=1
+                        if code=='ACCESS_BLOCKED':
+                            # No node rotation to bypass a site restriction.
+                            execute("UPDATE results SET status='CANCELLED',code='ACCESS_BLOCKED',reason='Site restriction; no node rotation',step='NOT_EXECUTED',ended_at=? WHERE run_id=? AND status='WAITING'",(now(),run['id']))
                         break
-                    account=accounts[account_cursor % len(accounts)]
-                    if not item['card_id']:
-                        account=next((a for a in accounts if a['id']==item['account_id']),account)
-                    network=networks[network_cursor % len(networks)]
-                    code=await run_item(pw,run,item,account,network,cards.get(item['card_id']),cache)
-                    account_cursor+=1
-                    network_cursor+=1
-                    if code in ('BAD_CREDENTIALS','LOGIN_TIMEOUT'):
-                        accounts=[a for a in accounts if a['id']!=account['id']]
-                        execute("UPDATE accounts SET status='UNAVAILABLE' WHERE id=?",(account['id'],))
-                    if code=='NETWORK_ERROR':
-                        networks=[n for n in networks if n['id']!=network['id']]
-                        execute("UPDATE networks SET status='FAILED',reason='NETWORK_ERROR' WHERE id=?",(network['id'],))
-                    if code=='ACCESS_BLOCKED':
-                        # End this run instead of moving the blocked activity to a new IP.
-                        execute("UPDATE results SET status='CANCELLED',code='ACCESS_BLOCKED',reason='Site restriction; no node rotation',step='NOT_EXECUTED',ended_at=? WHERE run_id=? AND status='WAITING'",(now(),run['id']))
-                        break
+                    if not accounts or not networks or code=='ACCESS_BLOCKED': break
             finally:
                 for browser,_,_,lease in cache.values():
                     try: await close_browser_network(browser,lease)

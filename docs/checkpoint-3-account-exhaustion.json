@@ -1,0 +1,4 @@
+{
+  "all accounts unavailable preserves unused selected data": "PASS",
+  "no submission when all accounts unavailable": "PASS"
+}

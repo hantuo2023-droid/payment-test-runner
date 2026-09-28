@@ -86,3 +86,18 @@ Checkpoint 1 为本地恢复点；本轮未 push。公开仓库信息仅按用�
 2. Submit started 后禁止自动重新提交，未知结果保持 ERROR/UNKNOWN_RESULT。
 3. 仅运行对应资源切换/提交边界测试，更新本文件并本地提交；然后继续 Checkpoint 4。
 4. 恢复时先读本文件及 git status，保留已通过的两个检查点，不重复完整验收。
+
+
+### COMPLETED CHECKPOINT: 3/4
+- 数据 used/selected/use_count/last_used_at 更新从 RunItem 开始移至 SUBMITTING 标记处、实际点击前；失败登录、连接失败、资源耗尽不消耗数据。
+- 提交前 BAD_CREDENTIALS / LOGIN_TIMEOUT 排除账号，NETWORK_ERROR 排除节点；同一 RunItem / 同一数据继续尝试剩余资源。每次重试减少一个资源，耗尽后当前及后续未提交数据为 NO_AVAILABLE_ACCOUNT / NO_AVAILABLE_NETWORK。
+- SUBMITTING 开始后不自动重试同一数据；浏览器异常/超时记 ERROR/UNKNOWN_RESULT。点击结果不确定时保守计为已使用。原 HTTP 403/429 停止、不换 IP 的规则保留；Production UI-only 不参与数据重试。
+- 无 schema、依赖、Session / Result 模型变更，保留原 13 项基线。
+- 仅阶段真实 Chromium + Local Sandbox + 受控 HTTP proxy 验证：坏账号→好账号四条均 BOUND；预检后坏节点→好节点四条均 BOUND；节点耗尽计数不变；提交后上游已处理但响应丢失产生 UNKNOWN_RESULT，不增加额外 Submit；429 停止后续且不转另一节点。PASS。
+- 单独补验全部账号失败：四条均 NO_AVAILABLE_ACCOUNT，used=0、selected=1、use_count=0、last_used_at=NULL，零 SUBMITTING。PASS。
+- 证据：docs/checkpoint-3-faults.json、docs/checkpoint-3-account-exhaustion.json。首次阶段测试发现重试重置 code=NULL 不符合现有 NOT NULL 约束，已改为空字符串并通过复验，未新增 migration。
+- 现有 e2e_pools.py 中两项旧的“消耗失败数据”断言已更新；该完整脚本本轮 NOT TESTED，留最终验收。全量 pytest、lint/build、Docker 仍 NOT TESTED。
+- LAST COMMIT：本节所在 fix: preserve data until submission starts；本轮本地保存，未 push、未访问 GitHub/VPS。
+
+### NEXT: CHECKPOINT 4/4
+授权 origin allowlist、Preview 警告 UI/说明与文档、导出回归；完成后一次最终完整 pytest / lint / build / 必要 Chromium E2E / Docker 可用性及验证。不要重跑已可靠完成的前述阶段专项验收。

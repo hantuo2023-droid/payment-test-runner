@@ -1,0 +1,9 @@
+{
+  "pre-submit same data survives bad account and node": "PASS",
+  "pre-submit exhaustion does not consume data": "PASS",
+  "post-submit unknown never resubmits": "PASS",
+  "bad account removed; remaining account continues": "PASS",
+  "failed preflight node excluded": "PASS",
+  "NO_AVAILABLE_NETWORK": "PASS",
+  "HTTP 429 after Submit stops without node switch": "PASS"
+}

@@ -192,15 +192,15 @@ def main():
             imp('accounts','bad-batch@example.com|incorrect')
             bad=next(a['id'] for a in client.get('/api/accounts').json() if a['email']=='bad-batch@example.com')
             badrun=wait(start(task(),[bad],data(4),[direct]))
-            assert badrun['results'][0]['code']=='BAD_CREDENTIALS'
-            assert all(r['code']=='NO_AVAILABLE_ACCOUNT' for r in badrun['results'][1:])
+            assert all(r['code']=='NO_AVAILABLE_ACCOUNT' for r in badrun['results'])
+            assert all(rows('SELECT use_count FROM cards WHERE id=?',(r['card_id'],))[0]['use_count']==0 for r in badrun['results'])
             # A healthy checked node fails after preflight; remaining selected node continues.
             failnode=Proxy(18883).start()
             imp('networks','http://127.0.0.1:18883')
             failed_id=next(n['id'] for n in client.get('/api/networks').json() if n['port']==18883)
             # Ascending ids: this new proxy comes second; after its failure the first resumes.
             fallback=wait(start(task(),account_ids[:1],data(4),[nodes[0],failed_id],failnode.stop))
-            assert [r['code'] for r in fallback['results']]==['BOUND','NETWORK_ERROR','BOUND','BOUND'],fallback
+            assert [r['code'] for r in fallback['results']]==['BOUND']*4,fallback
             REPORT['Bad resource isolation']='PASS'
             for fmt in ('csv','txt'):
                 export=client.get(f"/api/runs/{partial['id']}/export?format={fmt}")
