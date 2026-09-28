@@ -1,5 +1,7 @@
 # Payment Test Runner · 0.2.0
 
+私有仓库：[https://github.com/hantuo2023-droid/payment-test-runner](https://github.com/hantuo2023-droid/payment-test-runner)。
+
 简单的自托管浏览器测试工作台：导入账号、测试数据和可选节点 → 选择任务 → START → 查看结果、截图、Trace 和日志。
 
 **运行模式只有 LIVE。** 使用 Playwright Python 和真实 Chromium，不提供运行时 Mock，也不会将未知结果当作成功。
@@ -35,13 +37,15 @@ sudo bash scripts/install.sh
 
 安装器检查 Linux、安装 Docker（如尚未安装）、生成加密 Secret、构建服务、执行 Alembic、交互初始化管理员、等待服务健康并启动一次 Chromium 访问本地 Sandbox。
 
-发布仓库和安装器后可以使用：
+仓库为 **Private**。先使用有权限的 GitHub 账号完成 Git 登录，再克隆：
 
 ```bash
-curl -fsSL '<你发布的安装脚本原始地址>' | sudo PTR_REPO_URL='<你的 Git 仓库地址>' bash
+git clone https://github.com/hantuo2023-droid/payment-test-runner.git
+cd payment-test-runner
+sudo bash scripts/install.sh
 ```
 
-**目前没有配置远端仓库或发布安装器，因此不存在可直接复制使用的公共 curl URL。** 当前环境无 Docker，容器构建、运行和安装脚本尚未实机验收；参见 `ACCEPTANCE.md`。
+私有仓库不提供匿名公共 curl 安装地址。当前环境无 Docker，容器构建、运行和安装脚本尚未实机验收；参见 `ACCEPTANCE.md`。
 
 默认只监听 VPS 的 `127.0.0.1:3000`。从自己的电脑访问：
 

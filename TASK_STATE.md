@@ -20,12 +20,14 @@
 - 原有登录、Session 失效重登、结果代码、Production UI 不提交、Run 隔离、删除、证据脱敏回归 PASS。
 - 坏账号继续、失败节点排除、NO_AVAILABLE_NETWORK、提交后 HTTP 429 不切换节点 PASS。
 
-## 当前收尾
+## 本机与 GitHub 交付
 - 实现里程碑 6b2bb16；ACCEPTANCE.md 和 README.md 已同步。
 - 正式本机 data 已备份至 backups/before-v02-* 后升级；三个服务已启动，http://127.0.0.1:3000 健康检查通过，版本 0.2.0。
 - 正式库账号/测试数据/Run 均为空，管理员尚未初始化；按 README 运行 backend.cli init-admin 后登录。
 - 服务进程记录 data/local-services.json，日志 data/*.log。
-- GitHub：用户授权 private 仓库 payment-test-runner。尚无 remote；浏览器正在用户登录流程，不能声称上传成功。
+- GitHub 私有仓库：https://github.com/hantuo2023-droid/payment-test-runner 。完整 Git 历史已推送，origin/master 已关联；源码、文档和安全验收汇总在仓库中。
+- 用户明确授权了 Git Credential Manager 的 GitHub 登录权限；凭据由系统凭据管理器保管，不写进项目。
+- 本机运行数据、密码、Secret、原始测试目录与备份均未加入仓库。
 
 ## 限制 / NOT TESTED
 - Docker build/runtime、VPS、Linux 安装、容器重启、升级回滚与部署备份恢复：没有 Docker/Linux 主机。

@@ -90,4 +90,7 @@ pnpm build
 - Trace 脱敏并关闭网络/DOM 快照，诊断信息少于完整 Trace。截图保留验证 iframe 的可见内容，并遮罩所有输入框。
 - TestClient 有一条 httpx 弃用提示；13 项测试通过。
 - 本机管理员尚未初始化，按 README 初始化后使用自己的密码登录。
-- GitHub private 仓库上传待用户完成登录；尚未创建远端或推送，未声称发布成功。
+
+## GitHub 交付
+
+已上传至 [hantuo2023-droid/payment-test-runner](https://github.com/hantuo2023-droid/payment-test-runner)，可见性 Private，分支 master，包含本地完整提交历史。data、test-output、backups、secret.key 和环境文件没有进入仓库。
