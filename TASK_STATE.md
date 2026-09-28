@@ -101,3 +101,19 @@ Checkpoint 1 为本地恢复点；本轮未 push。公开仓库信息仅按用�
 
 ### NEXT: CHECKPOINT 4/4
 授权 origin allowlist、Preview 警告 UI/说明与文档、导出回归；完成后一次最终完整 pytest / lint / build / 必要 Chromium E2E / Docker 可用性及验证。不要重跑已可靠完成的前述阶段专项验收。
+
+
+### COMPLETED CHECKPOINT: 4/4
+- 新增服务器 PTR_AUTHORIZED_ORIGINS 精确 origin 白名单（协议/主机/有效端口）；内置 PTR_SANDBOX_URL 自动允许。非 Production 还需任务明确授权。预检与 Worker 都校验，浏览器请求保持同源限制并禁用 service worker；Production UI-only 不变。无 migration。
+- 导入 Preview 新增警告计数、行号、原因及遮罩内容；过期数据可确认导入，错误格式仍拒绝。
+- README、Compose、.env.example、ACCEPTANCE 同步新行为；按用户已知事实将旧 Private 描述更正为公开仓库，未联网验证。
+- 最终 UI 回归发现后台 refresh 覆盖新勾选的竞态，新增选择版本和待处理状态保护；复验默认/单选/多选实际运行通过。
+- 最终 backend full pytest：26 passed（原 13 项保留）；1 条原有 httpx 弃用提示。frontend lint PASS，production build PASS。勾选修复后仅补跑受影响页面 lint 与 build，均 PASS。
+- 必要真实 Chromium 回归：资源池 1+5 / 1+10 / 3账号12数据2代理 / 100选17、Session、spinner/多次及延迟跳转/iframe/未知结果、截图像素、STOP、坏资源切换、CSV/TXT 脱敏导出、Run 隔离均已通过断言。UI 默认3/单选1/多选2、六菜单、筛选和下载通过。
+- 浏览器脚本未反复整套重跑：core 到旧 BAD_CREDENTIALS 断言处停止（第三阶段已改为资源耗尽）；修正两项旧断言后 --tail-only 通过。pools 最后新增的跨源拦截检查后复用错误页有跳转竞态，改为新页面，--navigation-only 通过。UI 警告测试误用首页按钮名，改为“粘贴导入”，--warning-only 通过，警告区不泄露完整卡号、可导入且 pageerror=0。此前已通过断言不重复跑。
+- 证据：docs/reliability-final.json、reliability-core-tail.json、reliability-warning-ui.json 及前两阶段报告；本轮完整脚本报告未全部自然写出，因此汇总明确记录分段验证经过，不冒充全部脚本一次退出成功。
+- Docker：本机 Get-Command docker 未找到，build / compose up / health 均 NOT TESTED，未安装 Docker；VPS/真实 Preply/公网代理/任意第三方授权目标仍 NOT TESTED。
+- LAST COMMIT：本节所在 fix: enforce authorized origins and finalize reliability checks；本轮未 push。
+
+### NEXT / 恢复入口
+四个代码检查点完成，保留本地提交即可。无需再次修复、重克隆或重跑已通过验收。后续仅按用户指令处理交付；Docker 验证需要具备 Docker 的开发环境。正式本机常驻服务未按本轮代码重新部署，验收使用隔离测试目录与端口。

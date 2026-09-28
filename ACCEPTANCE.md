@@ -1,6 +1,6 @@
 # Payment Test Runner 0.2.0 验收报告
 
-日期：2026-09-28。通过验证的实现提交：`6b2bb16`。基于已验证 0.1.0 增量修改，无重写核心模块。
+日期：2026-09-28。原 0.2.0 实现提交：`6b2bb16`；本次增量恢复点见 TASK_STATE.md。基于已验证 0.1.0 增量修改，无重写核心模块。
 
 ## 实际执行计数
 
@@ -21,7 +21,7 @@
 |---|---|---|
 | Account batch import / export | PASS | 两种文本分隔符、CSV、规范化、去重、错误预览和安全字段导出 |
 | Test Data batch import / export | PASS | 文本/CSV、去重、遮罩；通用导入接受五 fixtures 以外的官方测试数据；Local Adapter 单独限制 |
-| Node batch import / export | PASS | HTTP/SOCKS5 URL、六列 CSV、去重、安全预览/导出；不支持的 SOCKS5 认证提前拒绝 |
+| Node batch import / export | PASS | HTTP/SOCKS5 URL、六列 CSV、去重、安全预览/导出；SOCKS5 认证通过本机临时转接；本地受控上游验证通过 |
 | Accounts individual / multi / select-all / deselect-all | PASS | 真实前端点击、持久化检查、START 实际账号 ID 核对 |
 | Test Data individual / multi / select-all / deselect-all | PASS | 真实前端点击、START 结果 ID 集合与所选数据完全一致 |
 | Nodes individual / multi / select-all / deselect-all | PASS | 真实前端点击、实际节点来自选择；取消全部阻止 START |
@@ -44,14 +44,14 @@
 | Batch STOP | PASS | 至少 2 项完成后在 processing 中停止；已完成保留、当前取消、排队 NOT_EXECUTED，未开始数据 use_count=0 |
 | Bad account isolation | PASS | BAD_CREDENTIALS 后移除坏账号，其他账号继续；全部不可用时 NO_AVAILABLE_ACCOUNT |
 | Bad node isolation | PASS | preflight 失败节点排除；运行期间节点失效后继续使用剩余所选节点 |
-| NO_AVAILABLE_NETWORK | PASS | 最后一节点真实断开，首项 NETWORK_ERROR，其余明确未执行 |
+| NO_AVAILABLE_NETWORK | PASS | 最后一节点真实断开，当前及后续未提交数据均 NO_AVAILABLE_NETWORK，使用计数不变 |
 | HTTP 429 after Submit | PASS | 真实代理返回 429；记录 ACCESS_BLOCKED，后续项目停止，未在另一节点提交 |
 | Run Isolation | PASS | 独立快照、结果和文件；后续 Run / 删除不改变已有 Run |
 | TXT / CSV Export | PASS | 实际账号、节点、Task 版本、原因、最终 URL 和时间；不含密码、完整卡号 |
 | Production UI boundary | PASS | 受控本地 Production 任务只打开 Add Card，UI_VERIFIED；无 FILLING / SUBMITTING |
 | Core 0.1 regression | PASS | BOUND / DECLINED / 3DS_REQUIRED / INVALID_DATA / UNKNOWN_RESULT / BAD_CREDENTIALS / LOGIN_TIMEOUT、Session、证据、删除、STOP |
 | UI filters / six menus / download | PASS | 真实账号与节点筛选、下载 CSV、六菜单；pageerror 数量 0 |
-| Backend tests | PASS | **13 pytest**，包括 001 → 002 带数据迁移和密文保留 |
+| Backend tests | PASS | **26 pytest（保留原 13 项）**，包括 001 → 002 带数据迁移和密文保留 |
 | Frontend lint | PASS | ESLint 退出码 0 |
 | Frontend build | PASS | Next.js 生产构建成功 |
 | Real Chromium E2E | PASS | e2e_live、e2e_pools、e2e_faults、e2e_ui 四套实际运行 |
@@ -83,14 +83,21 @@ pnpm build
 
 - Docker build/runtime、VPS 安装、Linux 脚本实跑、容器重启、部署升级回滚与备份恢复未测。迁移单元测试和本机升级不代表这些部署项目通过。
 - 真实 Preply 登录/UI 未测，未提供账号。Production 边界在受控本地站点验证。
-- 外部 HTTP、SOCKS5 连通和认证代理未测；本机无认证 HTTP 代理真实转发已验证。
+- 外部 HTTP、SOCKS5 连通和认证代理未测；本机无认证 HTTP 与认证 SOCKS5 代理真实转发已验证。
 - 任意自定义授权站点绑定未测，需要内部 Adapter 符合该环境页面协议及官方测试数据。导入格式通过不等于任意站点适配成功。
 - 非 Production 同源请求边界保留；跨域支付 iframe 需要专用适配器。不完成 3DS、OTP 或 CAPTCHA。
 - 单管理员、单 worker、串行执行。有效旧 Session 可以恢复；不自动恢复可能已提交的中断项目。
 - Trace 脱敏并关闭网络/DOM 快照，诊断信息少于完整 Trace。截图保留验证 iframe 的可见内容，并遮罩所有输入框。
-- TestClient 有一条 httpx 弃用提示；13 项测试通过。
+- TestClient 有一条 httpx 弃用提示；26 项测试通过。
 - 本机管理员尚未初始化，按 README 初始化后使用自己的密码登录。
 
 ## GitHub 交付
 
-已上传至 [hantuo2023-droid/payment-test-runner](https://github.com/hantuo2023-droid/payment-test-runner)，可见性 Private，分支 master，包含本地完整提交历史。data、test-output、backups、secret.key 和环境文件没有进入仓库。
+已上传至 [hantuo2023-droid/payment-test-runner](https://github.com/hantuo2023-droid/payment-test-runner)，公开仓库（用户明确确认），分支 master，原 0.2.0 历史已上传；本轮四个可靠性检查点为本地提交，尚未推送。data、test-output、backups、secret.key 和环境文件没有进入仓库。
+
+
+## 四阶段可靠性修复最终验收
+
+本轮汇总见 [reliability-final.json](docs/reliability-final.json)，恢复记录见 TASK_STATE.md。26 项后端测试、前端 lint/build 通过；浏览器完成资源池、终态、证据脱敏、导出、UI 选择、过期警告和 origin 边界验证。第二阶段认证 SOCKS5、第三阶段提交边界专项证据分别保存在 checkpoint-2-network.json 与 checkpoint-3-*.json。
+
+最终浏览器验收遇到旧断言及新增测试辅助步骤问题，修正后仅运行未完成部分，未重复整套已通过场景；详细经过与范围在汇总内。Docker build/up/health 因本机无 Docker 仍 NOT TESTED。四阶段提交目前仅在本地；本轮未推送或重新部署常驻服务。

@@ -15,6 +15,7 @@ from backend.store import rows, connect, execute, now, seal, DATA
 from backend.runner import ARTIFACTS
 from backend.network_transport import BrowserNetwork, close_browser_network
 from backend import runner
+from backend.origin_policy import binding_error, restrict_context
 
 router = APIRouter(prefix='/api',dependencies=[Depends(require_admin)])
 PROBES = {}
@@ -47,7 +48,8 @@ def prepare(body):
     if any(len(v) != len(set(v)) for v in ids.values()): reasons.append('同类资源不能重复选择')
     if not task['enabled']: reasons.append('任务已停用')
     if not all(task.get(k) for k in ('base_url','login_url','target_url')): reasons.append('Task 缺少必要 URL')
-    if task['environment'] != 'Production' and not task['authorized']: reasons.append('请确认对测试环境的授权')
+    policy_error = binding_error(task)
+    if policy_error: reasons.append(policy_error)
     resources['accounts'] = [a for a in resources['accounts'] if a['status']=='READY']
     if not resources['accounts']: reasons.append('请至少选择一个有效账号')
     if not resources['networks']: reasons.append('请至少选择一个节点（Direct 也可以）')
@@ -68,6 +70,8 @@ def signature(task, resources):
     return json.dumps([task,{k:[{f:r.get(f) for f in fields[k]} for r in v] for k,v in resources.items()}],sort_keys=True)
 
 async def probe_browser(task,network):
+    error = binding_error(task)
+    if error: return {'chromium':False,'connected':False,'reason':error}
     started = time.monotonic()
     browser = None
     lease = BrowserNetwork(network)
@@ -77,7 +81,9 @@ async def probe_browser(task,network):
             try:
                 browser = await pw.chromium.launch(headless=True,proxy=await lease.start())
                 chromium = True
-                page = await browser.new_page()
+                context = await browser.new_context(service_workers='block')
+                await restrict_context(context,task)
+                page = await context.new_page()
                 response = await page.goto(task['target_url'],wait_until='domcontentloaded',timeout=10000)
                 if not response or response.status >= 400:
                     return {'chromium':True,'connected':False,'reason':f'目标返回 HTTP {response.status if response else "未知"}'}

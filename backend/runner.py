@@ -16,6 +16,7 @@ THREAD = None
 TIMEOUT = int(os.getenv('PTR_TIMEOUT','30'))
 
 from backend.network_transport import BrowserNetwork, close_browser_network
+from backend.origin_policy import binding_error, restrict_context
 
 
 def clean_url(value):
@@ -69,6 +70,7 @@ async def run_item(pw, run, result, account, network, card, cache):
     execute("UPDATE results SET status='RUNNING',started_at=?,account_id=?,email=?,network_id=?,network_name=? WHERE id=?",(now(),account['id'],account['email'],network['id'],network['name'],result['id']))
     try:
         cancelled()
+        if binding_error(task): raise Outcome('UNAUTHORIZED_ORIGIN')
         if pair in cache:
             browser,context,page,lease=cache[pair]
             step('REUSING_CONTEXT','Reusing current Browser Context and Session',page)
@@ -81,14 +83,8 @@ async def run_item(pw, run, result, account, network, card, cache):
             browser = await pw.chromium.launch(headless=True,proxy=proxy)
             session = rows("SELECT * FROM sessions WHERE account_id=? AND task_id=? AND state='VALID' AND version=?",(account['id'],task['id'],task['version']))
             storage = unseal(session[0]['secret']) if session else None
-            context = await browser.new_context(storage_state=storage,viewport={'width':1280,'height':900})
-            if task['environment'] != 'Production':
-                allowed = urlsplit(task['base_url'])
-                async def guard(route):
-                    url = urlsplit(route.request.url)
-                    if url.scheme in ('http','https') and (url.scheme,url.netloc) != (allowed.scheme,allowed.netloc): await route.abort('blockedbyclient')
-                    else: await route.continue_()
-                await context.route('**/*',guard)
+            context = await browser.new_context(storage_state=storage,service_workers='block',viewport={'width':1280,'height':900})
+            await restrict_context(context,task)
             page = await context.new_page()
             cache[pair]=(browser,context,page,lease)
         await context.tracing.start(screenshots=False,snapshots=False,sources=False)

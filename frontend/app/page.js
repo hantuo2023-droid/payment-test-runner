@@ -122,6 +122,8 @@ function Modal({ title, description, onClose, children, error, notice }) {
 
 export default function App() {
   const runSignature = useRef("");
+  const selectionRevision = useRef(0);
+  const pendingSelections = useRef(0);
   const [logged, setLogged] = useState(false),
     [boot, setBoot] = useState(true),
     [password, setPassword] = useState(""),
@@ -167,6 +169,7 @@ export default function App() {
     if (e.status === 401) setLogged(false);
   }, []);
   const refresh = useCallback(async () => {
+    const revision = selectionRevision.current;
     try {
       const [a, c, t, n, r, h, s] = await Promise.all(
         [
@@ -181,9 +184,14 @@ export default function App() {
       );
       setAccounts(a);
       setCards(c);
-      setAids(a.filter((x) => x.selected).map((x) => x.id));
-      setCids(c.filter((x) => x.selected).map((x) => x.id));
-      setNids(n.filter((x) => x.selected).map((x) => x.id));
+      if (
+        revision === selectionRevision.current &&
+        pendingSelections.current === 0
+      ) {
+        setAids(a.filter((x) => x.selected).map((x) => x.id));
+        setCids(c.filter((x) => x.selected).map((x) => x.id));
+        setNids(n.filter((x) => x.selected).map((x) => x.id));
+      }
       setTasks(t);
       setNetworks(n);
       setRuns(r);
@@ -265,6 +273,8 @@ export default function App() {
             ? "networks"
             : null;
     if (kind) {
+      selectionRevision.current += 1;
+      pendingSelections.current += 1;
       setter(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
       act(async () => {
         try {
@@ -273,6 +283,8 @@ export default function App() {
             selected: !ids.includes(id),
           });
         } finally {
+          pendingSelections.current -= 1;
+          selectionRevision.current += 1;
           await refresh();
         }
       });
@@ -1832,13 +1844,14 @@ export default function App() {
             <>
               <div
                 className="stats"
-                style={{ gridTemplateColumns: "repeat(4,1fr)", marginTop: 20 }}
+                style={{ gridTemplateColumns: "repeat(5,1fr)", marginTop: 20 }}
               >
                 {[
                   ["总数", preview.total],
                   ["有效", preview.valid],
                   ["重复", preview.duplicates],
                   ["错误", preview.errors.length],
+                  ["警告", (preview.warnings || []).length],
                 ].map(([t, n]) => (
                   <div className="stat" key={t}>
                     <strong>{n}</strong>
@@ -1846,6 +1859,17 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              {(preview.warnings || []).map((w) => (
+                <div
+                  className="info-box"
+                  key={`${w.line}-${w.code}`}
+                  role="status"
+                >
+                  警告 · 第 {w.line} 行 · {w.reason}
+                  <br />
+                  {w.raw}
+                </div>
+              ))}
               {preview.errors.map((e) => (
                 <div className="error-banner" key={e.line}>
                   第 {e.line} 行 · {e.reason}
@@ -1989,7 +2013,7 @@ export default function App() {
                 我已获得该测试环境的明确授权（运行完整绑卡测试必选）
               </label>
               <div className="info-box">
-                自定义测试站点需支持本工具内置页面适配协议。特殊站点需添加内部
+                运行前还需管理员将本站点加入服务器授权范围（协议、域名和端口均须匹配）。自定义测试站点需支持本工具内置页面适配协议。特殊站点需添加内部
                 Task 适配器，详见 README；未识别的页面会返回明确错误。
               </div>
             </>

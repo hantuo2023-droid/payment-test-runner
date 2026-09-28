@@ -17,6 +17,23 @@ from backend.tests.http_proxy import Proxy
 
 ROOT=Path.cwd()
 
+async def warning_test(page):
+    before=len(await (await page.request.get('http://127.0.0.1:3001/api/cards')).json())
+    await page.locator('nav').get_by_role('button',name='测试数据',exact=True).click()
+    await page.get_by_role('button',name='粘贴导入',exact=True).first.click()
+    dialog=page.get_by_role('dialog')
+    await dialog.get_by_label('粘贴文本',exact=False).fill('4242424242424242|01/20|123')
+    await dialog.get_by_role('button',name='预览导入').click()
+    await dialog.get_by_role('status').filter(has_text='有效期已过期').wait_for()
+    assert '4242424242424242' not in await dialog.get_by_role('status').inner_text()
+    assert await dialog.get_by_role('button',name='确认导入').is_enabled()
+    await dialog.get_by_role('button',name='确认导入').click()
+    await dialog.wait_for(state='hidden')
+    assert len(await (await page.request.get('http://127.0.0.1:3001/api/cards')).json())==before+1
+    report={'expired data warning visible, masked and import allowed':'PASS'}
+    Path('test-output/warning-ui-report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+    print(json.dumps(report),flush=True)
+
 async def browser_test():
     async with async_playwright() as pw:
         browser=await pw.chromium.launch()
@@ -27,6 +44,11 @@ async def browser_test():
         await page.get_by_label('管理员密码',exact=False).fill('ui-acceptance-password')
         await page.get_by_role('button',name='登录',exact=True).click()
         await page.get_by_role('heading',name='Payment Test Runner',exact=False).wait_for()
+        if '--warning-only' in sys.argv:
+            await warning_test(page)
+            assert not errors,errors
+            await browser.close()
+            return
         async def nav(label):
             await page.locator('nav').get_by_role('button',name=label,exact=True).click()
         async def records(kind): return await (await page.request.get('http://127.0.0.1:3001/api/'+kind)).json()
@@ -123,9 +145,10 @@ async def browser_test():
         await page.screenshot(path='test-output/home-desktop.png',full_page=True)
         await page.set_viewport_size({'width':820,'height':1100})
         await page.screenshot(path='test-output/home-tablet.png',full_page=True)
+        await warning_test(page)
         assert not errors,errors
         await browser.close()
-        report={'UI login':'PASS','UI paste / CSV / TXT import':'PASS','Default import -> automatic readiness -> START':len(default['results']),'All/none/single/multiple checkboxes in three pools':'PASS','Single selection actual RunItems':len(single['results']),'Multiple selection actual RunItems':len(multi['results']),'UI result filters / export / six menus':'PASS','page_errors':errors}
+        report={'expired data warning visible and import allowed':'PASS','UI login':'PASS','UI paste / CSV / TXT import':'PASS','Default import -> automatic readiness -> START':len(default['results']),'All/none/single/multiple checkboxes in three pools':'PASS','Single selection actual RunItems':len(single['results']),'Multiple selection actual RunItems':len(multi['results']),'UI result filters / export / six menus':'PASS','page_errors':errors}
         Path('test-output/v02-ui-report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
         print(json.dumps(report,indent=2))
 

@@ -19,6 +19,7 @@ from backend.auth import initialize
 from backend.store import migrate,rows,execute
 from backend.tests.http_proxy import Proxy
 from backend.result_wait import wait_terminal
+from backend.origin_policy import restrict_context
 
 ROOT=Path(os.environ['PTR_DATA'])
 REPORT={'data_root':str(ROOT)}
@@ -31,8 +32,20 @@ def verify_image(path):
 async def navigation_regression():
     async with async_playwright() as pw:
         browser=await pw.chromium.launch()
-        page=await browser.new_page()
+        context=await browser.new_context(service_workers='block')
+        await restrict_context(context,{'environment':'QA','base_url':'http://127.0.0.1:18080'})
+        page=await context.new_page()
         await page.goto('http://127.0.0.1:18080/health')
+        try:
+            await page.goto('http://localhost:18080/health')
+        except Exception:
+            pass
+        else:
+            raise AssertionError('Unauthorized alternate origin was reachable')
+        await page.close()
+        page=await context.new_page()
+        await page.goto('http://127.0.0.1:18080/health')
+        REPORT['Exact origin browser boundary']='PASS'
         events=[]
         first=True
         async def observe():
@@ -65,6 +78,11 @@ def main():
             try:
                 with socket.create_connection(('127.0.0.1',18080),timeout=.2):break
             except OSError:time.sleep(.1)
+        if '--navigation-only' in sys.argv:
+            asyncio.run(navigation_regression())
+            Path('test-output/origin-navigation-report.json').write_text(json.dumps(REPORT,indent=2),encoding='utf-8')
+            print(json.dumps(REPORT,indent=2))
+            return
         with TestClient(app) as client:
             client.headers['X-PTR-Client']='web'
             assert client.post('/api/auth/login',json={'password':'acceptance-pools-password'}).status_code==200

@@ -13,6 +13,7 @@ services:
       PTR_DATA: /data
       PTR_SECRET: ${PTR_SECRET:?Generate PTR_SECRET before startup}
       PTR_SANDBOX_URL: http://sandbox:8080
+      PTR_AUTHORIZED_ORIGINS: ${PTR_AUTHORIZED_ORIGINS:-}
       PTR_SECURE_COOKIE: ${PTR_SECURE_COOKIE:-0}
     volumes:
       - ${PTR_DATA_DIR:-./data}:/data

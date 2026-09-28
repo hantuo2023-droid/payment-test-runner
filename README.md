@@ -105,7 +105,7 @@ http://username:password@host:port
 socks5://host:port
 ```
 
-CSV 标题：`name,protocol,host,port,username,password`。按协议、Host、端口、用户名去重；密码加密，预览错误不回显凭据。Chromium 不支持 SOCKS5 用户名密码认证，导入预览即拒绝并解释。
+CSV 标题：`name,protocol,host,port,username,password`。按协议、Host、端口、用户名去重；密码加密，预览错误不回显凭据。SOCKS5 用户名密码认证经本机临时转接支持，用户名与密码各为 1–255 个 UTF-8 字节；认证失败不会回退 Direct。
 
 新节点默认选中，START 前检查所选节点访问当前 Task 的能力。CONNECTED 才进入 Run 快照，FAILED 保留在列表但排除；可“批量 Test Connection”重测，列表显示状态、延迟和原因。延迟包含 Chromium 启动和目标访问时间。403 / 429 / CAPTCHA 等限制终止本次受影响运行，不换 IP 重试。
 
@@ -147,7 +147,7 @@ Submit 后持续观察 PROCESSING / WAITING_RESULT。加载、空白页、跳转
 - 浏览器异常只保存归类错误，不直接记录可能含密码的 Playwright 原始异常。导航 URL 去掉查询字符串与片段。
 - 普通错误不会切换 Mock；程序重启时将中断项目记为 INTERRUPTED，避免自动重复可能已提交的测试。
 - 准备检查使用当前任务和网络真正启动 Chromium 并访问目标。凭证有效 120 秒，配置或选择变化后界面自动重新检查；START 验证同一份资源签名。
-- SOCKS5 仅支持无认证，这是 Chromium 的限制；需要账号密码的代理请用 HTTP。
+- SOCKS5 支持有认证和无认证；已用本地受控上游验收，未提供的公网节点仍需自行检查连通性。
 - 不绕过 CAPTCHA、限流、登录限制；不因这些限制更换节点。HTTP 403/429 会记录 ACCESS_BLOCKED 并停止本次 Run 的后续项目。
 
 ## 维护
@@ -183,3 +183,12 @@ pnpm build
 测试只写 `test-output`，每次端到端执行使用独立目录。`e2e_pools` 验证资源池数量、真实代理、Session 复用、终态截图像素、导航异常恢复和批量停止。`e2e_live` 使用真实 Chromium 测试登录、Add Card、Fill、Submit、结果解析、STOP、Run 隔离和脱敏证据；`e2e_ui` 启动实际 Next.js / FastAPI / Sandbox，点击导入、预览、选择、START、导出，并生成桌面/平板截图。
 
 参考：[Playwright Trace 配置](https://playwright.dev/python/docs/api/class-tracing)、[Next.js 安装文档](https://nextjs.org/docs/app/getting-started/installation)。
+
+
+## 增量可靠性修复
+- 导入兼容 BOM、全角数值、不可见格式字符及明确分隔符；有效期可用 MM/YY、MM/YYYY 或独立列。两位年份映射 20YY，内部保存四位年份。过期数据显示警告，仍允许确认导入；错误格式仍拒绝。账号密码内容不被规范化改写。
+- 首次导入代理后默认取消 Direct；之后保留主动勾选。节点可编辑，空密码保留原值，清空凭据需明确勾选。运行中禁止编辑；编辑后必须重新检查连接。
+- 数据在提交动作开始时才记为使用；此前坏账号/节点会被排除，同一数据使用剩余资源继续。资源耗尽不消耗数据。提交开始后不自动重复；未知结果为 ERROR/UNKNOWN_RESULT，不能视为失败后自动重试。
+- 非 Production 完整测试同时要求任务授权勾选和服务器 origin 授权。内置 `PTR_SANDBOX_URL`（默认 `http://127.0.0.1:8080`）自动获准；其他授权站点由管理员设置 `PTR_AUTHORIZED_ORIGINS=https://qa.example.test,http://127.0.0.1:9000`，重启后生效。Compose 可在 `.env` 配置此变量。
+- origin 按协议、主机、有效端口精确匹配，不支持通配符、路径或查询参数；任务三个 URL 必须同源。准备检查与执行均校验，非 Production 浏览器也会阻止跨源请求/跳转，不会因域名后缀相似自动放行。Production 仍只验证 UI。
+- 这些选项不会授予对第三方站点的测试权限；仅填入已获明确授权的 QA / Staging / Internal 站点。内置 Sandbox 仍仅接收五种合成 fixture。

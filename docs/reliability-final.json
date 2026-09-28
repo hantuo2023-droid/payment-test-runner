@@ -1,0 +1,24 @@
+{
+  "backend_pytest": {
+    "result": "PASS",
+    "passed": 26,
+    "baseline_preserved": 13,
+    "warnings": "Existing httpx deprecation warning"
+  },
+  "frontend_lint": "PASS; changed page lint passed again after selection race fix",
+  "frontend_build": "PASS; rebuilt after selection race fix",
+  "browser": {
+    "pools": "PASS assertions: 1+5, 1+10, 3/12/2 proxies, selected 17/100, reuse, terminal waits, screenshots, STOP, resource failover, CSV/TXT exports. Final navigation helper initially failed; repaired and rerun separately.",
+    "core": "PASS assertions through terminal results, redacted traces, STOP, exports, isolation and expired session relogin. Old account-error assertions updated to exhaustion semantics; remaining tail passed separately.",
+    "ui": "PASS assertions: paste/CSV/TXT, all/none/single/multiple selection, actual 3/1/2 RunItems, filters, download and six menus. Selection refresh race fixed. Added warning helper initially used wrong button label; repaired and rerun separately.",
+    "origin_navigation": {
+      "Exact origin browser boundary": "PASS",
+      "Navigation Transient Regression": "PASS"
+    },
+    "warning_ui": "PASS: visible expired warning, masked preview, confirmation allowed; pageerrors 0 in warning-only run"
+  },
+  "docker": "NOT TESTED: Docker command unavailable; build/up/health not run",
+  "external_proxy_and_third_party_targets": "NOT TESTED: no provided external environment; only local controlled fixtures",
+  "scope": "Full pytest/lint/build initially run once. Failures/new UI fix triggered affected checks only; no full browser suite restart.",
+  "delivery": "Local commits; no GitHub authentication changes, remote permission checks, VPS work or push"
+}

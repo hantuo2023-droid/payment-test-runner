@@ -60,59 +60,63 @@ def run():
                     if data['status'] not in ('QUEUED','RUNNING'): return data
                     time.sleep(.1)
                 raise AssertionError('run timeout')
-            rid=start(['bound','declined','three','invalid','delay','timeout'],cids[:6])
-            first=wait(rid)
-            codes=[r['code'] for r in first['results']]
-            assert codes==['BOUND','DECLINED','3DS_REQUIRED','INVALID_DATA','BOUND','UNKNOWN_RESULT'],codes
-            for result in first['results']:
-                assert set(result['artifacts'])=={'screenshot.png','trace.zip','log.jsonl'},result
-                folder=Path(os.environ['PTR_DATA'])/'artifacts'/str(rid)/str(result['id'])
-                logs=(folder/'log.jsonl').read_text(encoding='utf-8')
-                assert 'FILLING' in logs and 'SUBMITTING' in logs and 'WAITING_RESULT' in logs
-                with zipfile.ZipFile(folder/'trace.zip') as trace:
-                    contents=''.join(trace.read(n).decode() for n in trace.namelist())
-                    assert 'sandbox-pass' not in contents and fixtures[0] not in contents
-            for fmt in ('txt','csv'):
-                export=client.get(f'/api/runs/{rid}/export?format={fmt}')
-                assert export.status_code==200 and 'BOUND' in export.text and 'sandbox-pass' not in export.text and fixtures[0] not in export.text
-            second_id=start(['stop','bound'],cids[6:])
-            for _ in range(100):
-                current=client.get(f'/api/runs/{second_id}').json()
-                if current['results'][0]['step'] in ('WAITING_RESULT','PROCESSING'): break
-                time.sleep(.1)
-            assert client.post(f'/api/runs/{second_id}/stop').status_code==200
-            second=wait(second_id)
-            assert all(r['status']=='CANCELLED' for r in second['results']),second
-            assert second['results'][1]['code']=='NOT_EXECUTED'
-            assert len(client.get(f'/api/runs/{rid}').json()['results'])==6
-            assert client.post('/api/runs/delete',json={'ids':[second_id],'confirmed':True}).status_code==200
-            assert len(client.get('/api/accounts').json())==7
-            assert client.get(f'/api/runs/{second_id}').status_code==404
-            # Session reuse, expiry fallback, task version isolation checked directly.
-            assert rows("SELECT COUNT(*) n FROM sessions WHERE state='VALID'")[0]['n']>=6
-            for month,expired in [(10,False),(11,True)]:
-                if expired:
-                    session=rows('SELECT secret FROM sessions WHERE account_id=? AND task_id=1',(aid['bound'],))[0]
-                    state=unseal(session['secret'])
-                    state['cookies']=[]
-                    execute('UPDATE sessions SET secret=? WHERE account_id=? AND task_id=1',(seal(state),aid['bound']))
-                import_text('cards',f'4242424242424242|{month}|2035|123')
-                cid=max(c['id'] for c in client.get('/api/cards').json())
-                srid=start(['bound'],[cid])
-                session_run=wait(srid)
-                assert session_run['results'][0]['code']=='BOUND'
-                events=client.get(f'/api/runs/{srid}/logs').json()
-                assert any(e['step']=='AUTHENTICATING' for e in events)==expired
+            codes=['BOUND','DECLINED','3DS_REQUIRED','INVALID_DATA','BOUND','UNKNOWN_RESULT']
+            if '--tail-only' not in sys.argv:
+                rid=start(['bound','declined','three','invalid','delay','timeout'],cids[:6])
+                first=wait(rid)
+                codes=[r['code'] for r in first['results']]
+                assert codes==['BOUND','DECLINED','3DS_REQUIRED','INVALID_DATA','BOUND','UNKNOWN_RESULT'],codes
+                for result in first['results']:
+                    assert set(result['artifacts'])=={'screenshot.png','trace.zip','log.jsonl'},result
+                    folder=Path(os.environ['PTR_DATA'])/'artifacts'/str(rid)/str(result['id'])
+                    logs=(folder/'log.jsonl').read_text(encoding='utf-8')
+                    assert 'FILLING' in logs and 'SUBMITTING' in logs and 'WAITING_RESULT' in logs
+                    with zipfile.ZipFile(folder/'trace.zip') as trace:
+                        contents=''.join(trace.read(n).decode() for n in trace.namelist())
+                        assert 'sandbox-pass' not in contents and fixtures[0] not in contents
+                for fmt in ('txt','csv'):
+                    export=client.get(f'/api/runs/{rid}/export?format={fmt}')
+                    assert export.status_code==200 and 'BOUND' in export.text and 'sandbox-pass' not in export.text and fixtures[0] not in export.text
+                second_id=start(['stop','bound'],cids[6:])
+                for _ in range(100):
+                    current=client.get(f'/api/runs/{second_id}').json()
+                    if current['results'][0]['step'] in ('WAITING_RESULT','PROCESSING'): break
+                    time.sleep(.1)
+                assert client.post(f'/api/runs/{second_id}/stop').status_code==200
+                second=wait(second_id)
+                assert all(r['status']=='CANCELLED' for r in second['results']),second
+                assert second['results'][1]['code']=='NOT_EXECUTED'
+                assert len(client.get(f'/api/runs/{rid}').json()['results'])==6
+                assert client.post('/api/runs/delete',json={'ids':[second_id],'confirmed':True}).status_code==200
+                assert len(client.get('/api/accounts').json())==7
+                assert client.get(f'/api/runs/{second_id}').status_code==404
+                # Session reuse, expiry fallback, task version isolation checked directly.
+                assert rows("SELECT COUNT(*) n FROM sessions WHERE state='VALID'")[0]['n']>=6
+                for month,expired in [(10,False),(11,True)]:
+                    if expired:
+                        session=rows('SELECT secret FROM sessions WHERE account_id=? AND task_id=1',(aid['bound'],))[0]
+                        state=unseal(session['secret'])
+                        state['cookies']=[]
+                        execute('UPDATE sessions SET secret=? WHERE account_id=? AND task_id=1',(seal(state),aid['bound']))
+                    import_text('cards',f'4242424242424242|{month}|2035|123')
+                    cid=max(c['id'] for c in client.get('/api/cards').json())
+                    srid=start(['bound'],[cid])
+                    session_run=wait(srid)
+                    assert session_run['results'][0]['code']=='BOUND'
+                    events=client.get(f'/api/runs/{srid}/logs').json()
+                    assert any(e['step']=='AUTHENTICATING' for e in events)==expired
             # Explicit bad credentials are classified separately from timeouts.
             import_text('accounts','bad@example.com|wrong-password')
             aid['bad']=max(a['id'] for a in client.get('/api/accounts').json())
             import_text('cards','4242424242424242|9|2035|123')
             bad_id=start(['bad'],[max(c['id'] for c in client.get('/api/cards').json())])
-            assert wait(bad_id)['results'][0]['code']=='BAD_CREDENTIALS'
+            assert wait(bad_id)['results'][0]['code']=='NO_AVAILABLE_ACCOUNT'
+            assert any(e['step']=='ERROR' and e['action']=='BAD_CREDENTIALS' for e in client.get(f'/api/runs/{bad_id}/logs').json())
             import_text('accounts','login-timeout@example.com|sandbox-pass')
             aid['login-timeout']=max(a['id'] for a in client.get('/api/accounts').json())
             timeout_id=start(['login-timeout'],[cids[7]])
-            assert wait(timeout_id)['results'][0]['code']=='LOGIN_TIMEOUT'
+            assert wait(timeout_id)['results'][0]['code']=='NO_AVAILABLE_ACCOUNT'
+            assert any(e['step']=='ERROR' and e['action']=='LOGIN_TIMEOUT' for e in client.get(f'/api/runs/{timeout_id}/logs').json())
             # Real connection failure must prevent START.
             network=client.post('/api/networks',json={'name':'Dead proxy','protocol':'HTTP','host':'127.0.0.1','port':9}).json()
             probe=client.post('/api/preflight',json={'task_id':1,'network_id':network['id'],'account_ids':[aid['bound']],'card_ids':[]}).json()
@@ -129,7 +133,9 @@ def run():
             assert not any(e['step'] in ('FILLING','SUBMITTING') for e in client.get(f'/api/runs/{ui_id}/logs').json())
             execute('DELETE FROM tasks WHERE id=?',(ui_task['id'],))
             report={'mode':'LIVE','codes':codes,'stop_active_and_waiting':'PASS','run_isolation':'PASS','exports':'PASS','delete_run':'PASS','artifacts_redacted':'PASS','session_reuse':'PASS','expired_session_relogin':'PASS','bad_credentials':'PASS','login_timeout':'PASS','failed_network_blocks_start':'PASS','production_ui_no_binding':'PASS'}
-            Path('test-output/e2e-report.json').write_text(json.dumps(report,indent=2))
+            if '--tail-only' in sys.argv:
+                report={k:v for k,v in report.items() if k in ('bad_credentials','login_timeout','failed_network_blocks_start','production_ui_no_binding')}
+            Path('test-output/e2e-tail-report.json' if '--tail-only' in sys.argv else 'test-output/e2e-report.json').write_text(json.dumps(report,indent=2))
             print(json.dumps(report,indent=2))
     finally:
         server.terminate()
